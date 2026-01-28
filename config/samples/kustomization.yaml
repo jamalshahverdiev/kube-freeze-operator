@@ -1,0 +1,6 @@
+## Append samples of your project ##
+resources:
+- freeze-operator_v1alpha1_maintenancewindow.yaml
+- freeze-operator_v1alpha1_changefreeze.yaml
+- freeze-operator_v1alpha1_freezeexception.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

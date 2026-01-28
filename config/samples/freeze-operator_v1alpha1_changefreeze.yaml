@@ -1,0 +1,31 @@
+apiVersion: freeze-operator.io/v1alpha1
+kind: ChangeFreeze
+metadata:
+  labels:
+    app.kubernetes.io/name: kube-freeze-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: changefreeze-sample
+spec:
+  startTime: "2026-12-24T00:00:00Z"
+  endTime: "2026-12-27T00:00:00Z"
+  target:
+    namespaceSelector:
+      matchLabels:
+        env: prod
+    kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+      - CronJob
+  rules:
+    deny:
+      - ROLL_OUT
+      - SCALE
+      - CREATE
+      - DELETE
+  behavior:
+    suspendCronJobs: true
+  message:
+    reason: "Holiday change freeze"
+    docsURL: "https://freeze-operator.io/docs"
+    contact: "#platform-oncall"

@@ -1,0 +1,31 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration-workloads
+webhooks:
+  - name: vworkloads-v1alpha1.kb.io
+    admissionReviewVersions:
+      - v1
+    sideEffects: None
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    clientConfig:
+      service:
+        name: webhook-service
+        namespace: system
+        path: /validate-freeze-operator-io-v1alpha1-workloads
+    rules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE","UPDATE","DELETE"]
+        resources: ["deployments","statefulsets","daemonsets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE","UPDATE","DELETE"]
+        resources: ["cronjobs"]
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-freeze-operator-system

@@ -1,0 +1,46 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - freeze-operator.io
+  resources:
+  - changefreezes
+  - freezeexceptions
+  - maintenancewindows
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - freeze-operator.io
+  resources:
+  - changefreezes/finalizers
+  - freezeexceptions/finalizers
+  - maintenancewindows/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - freeze-operator.io
+  resources:
+  - changefreezes/status
+  - freezeexceptions/status
+  - maintenancewindows/status
+  verbs:
+  - get
+  - patch
+  - update

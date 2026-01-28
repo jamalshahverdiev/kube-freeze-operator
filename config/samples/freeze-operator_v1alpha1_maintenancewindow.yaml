@@ -1,0 +1,35 @@
+apiVersion: freeze-operator.io/v1alpha1
+kind: MaintenanceWindow
+metadata:
+  labels:
+    app.kubernetes.io/name: kube-freeze-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: maintenancewindow-sample
+spec:
+  timezone: Europe/Berlin
+  mode: DenyOutsideWindows
+  windows:
+    - name: night-window
+      schedule: "0 1 * * *"
+      duration: 6h
+  target:
+    namespaceSelector:
+      matchLabels:
+        env: prod
+    kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+      - CronJob
+  rules:
+    deny:
+      - ROLL_OUT
+      - SCALE
+      - CREATE
+      - DELETE
+  behavior:
+    suspendCronJobs: true
+  message:
+    reason: "Production changes are allowed only during maintenance windows"
+    docsURL: "https://freeze-operator.io/docs"
+    contact: "#platform-oncall"

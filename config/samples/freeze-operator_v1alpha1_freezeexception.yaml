@@ -1,0 +1,27 @@
+apiVersion: freeze-operator.io/v1alpha1
+kind: FreezeException
+metadata:
+  labels:
+    app.kubernetes.io/name: kube-freeze-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: freezeexception-sample
+spec:
+  activeFrom: "2026-12-25T10:00:00Z"
+  activeTo: "2026-12-25T12:00:00Z"
+  target:
+    namespaceSelector:
+      matchLabels:
+        env: prod
+    objectSelector:
+      matchLabels:
+        app.kubernetes.io/name: payments
+    kinds:
+      - Deployment
+  allow:
+    - ROLL_OUT
+  constraints:
+    requireLabels:
+      freeze-operator.io/ticket: "true"
+  reason: "Urgent hotfix during freeze"
+  ticketURL: "https://tickets.example.com/INC-1234"
+  approvedBy: "sre-oncall"
