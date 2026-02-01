@@ -1,0 +1,78 @@
+# Simple Deployment for testing freeze policies
+#
+# This Deployment will be used for all three tests:
+# 1. MaintenanceWindow - verifies blocking OUTSIDE maintenance windows
+# 2. ChangeFreeze - verifies blocking WITHIN the time window (startTime-endTime)
+# 3. FreezeException - verifies that an exception OVERRIDES blocking
+#
+# Labels:
+# - app: test-app (regular application label)
+# - controlled-by: freeze-operator (required for all our policies)
+# - emergency: "true" (for FreezeException - the workload gets an exception)
+
+---
+# Production namespace with the correct labels
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-prod
+  labels:
+    env: prod                        # Production namespace
+    controlled-by: freeze-operator   # Required for MaintenanceWindow and ChangeFreeze
+    test-suite: simple-example       # For convenient cleanup
+
+---
+# Deployment WITHOUT the emergency label (will be blocked)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: normal-app
+  namespace: test-prod
+  labels:
+    app: normal-app
+    emergency: "true"
+    controlled-by: freeze-operator   # Required for FreezeException objectSelector
+    test-suite: simple-example       # For convenient cleanup
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: normal-app
+  template:
+    metadata:
+      labels:
+        app: normal-app
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+
+---
+# Deployment WITH the emergency label (will get an exception from FreezeException)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emergency-app
+  namespace: test-prod
+  labels:
+    app: emergency-app
+    controlled-by: freeze-operator   # Required for FreezeException objectSelector
+    emergency: "true"                # THIS LABEL grants an exception from FreezeException!
+    test-suite: simple-example       # For convenient cleanup
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: emergency-app
+  template:
+    metadata:
+      labels:
+        app: emergency-app
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80

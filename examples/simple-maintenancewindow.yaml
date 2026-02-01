@@ -1,0 +1,49 @@
+# MaintenanceWindow - blocks changes OUTSIDE maintenance windows
+#
+# How it works:
+# 1. mode: DenyOutsideWindows = blocks operations WHEN THERE IS NO maintenance window right now
+# 2. windows: defines WHEN changes are allowed (e.g., every day from 02:00 to 03:00)
+# 3. target.namespaceSelector: selects namespaces by labels
+# 4. rules.deny: which operations to block (ROLL_OUT, SCALE, CREATE, DELETE)
+#
+# In this example:
+# - We block the production namespace (env=prod + controlled-by=freeze-operator)
+# - We allow changes ONLY during the first 15 minutes of each hour (XX:00 - XX:15)
+# - Example: 14:00-14:15 ALLOW, 14:15-15:00 DENY, 15:00-15:15 ALLOW, etc.
+
+apiVersion: freeze-operator.io/v1alpha1
+kind: MaintenanceWindow
+metadata:
+  name: prod-maintenance
+  labels:
+    # These two labels will help us find and delete this resource later
+    test-suite: simple-example       # Common label for all test resources
+    test-type: maintenancewindow     # Indicates the test type
+spec:
+  timezone: UTC
+  mode: DenyOutsideWindows           # DENY = block OUTSIDE windows
+  
+  windows:
+    # Maintenance window: first 15 minutes of every hour
+    # If now is XX:00 - XX:15 → ALLOW (inside window)
+    # If now is XX:15 - XX:59 → DENY (outside window)
+    - name: hourly-window
+      schedule: "0 * * * *"          # cron: every hour at :00 minutes
+      duration: 15m                  # 15 minutes (XX:00 - XX:15)
+  
+  target:
+    # Apply this policy to namespaces with label env=prod
+    namespaceSelector:
+      matchLabels:
+        env: prod                    # Production namespaces only
+        controlled-by: freeze-operator  # Namespace must have this label
+    
+    # Apply to these workload kinds
+    kinds: [Deployment, StatefulSet, DaemonSet, CronJob]
+  
+  rules:
+    # Block these operations OUTSIDE maintenance windows
+    deny: [ROLL_OUT, SCALE, CREATE, DELETE]
+  
+  message:
+    reason: "Production changes are allowed only during maintenance windows"

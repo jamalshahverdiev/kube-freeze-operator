@@ -1,0 +1,45 @@
+# ChangeFreeze - blocks changes DURING a specific time period
+#
+# How it works:
+# 1. startTime/endTime: defines the PERIOD when changes are blocked
+# 2. If now is between startTime and endTime → DENY
+# 3. If now is OUTSIDE this period → ALLOW
+# 4. target.namespaceSelector: selects namespaces by labels
+# 5. rules.deny: which operations to block
+#
+# In this example:
+# - Block production namespace (env=prod + controlled-by=freeze-operator)
+# - startTime: today 00:00 UTC (start of day)
+# - endTime: today 23:59 UTC (end of day)
+# - So NOW is an active freeze (entire day is blocked)
+# - Later we'll apply FreezeException for the same Deployment to show override
+
+apiVersion: freeze-operator.io/v1alpha1
+kind: ChangeFreeze
+metadata:
+  name: prod-freeze
+  labels:
+    # These two labels will help us find and delete this resource later
+    test-suite: simple-example       # Common label for all test resources
+    test-type: changefreeze          # Shows the test type
+spec:
+  # Blocking time window (ACTIVE NOW - entire day February 1, 2026)
+  startTime: "2026-02-01T00:00:00Z"  # Freeze start (beginning of day)
+  endTime: "2026-02-01T23:59:59Z"    # Freeze end (end of day)
+  
+  target:
+    # Apply this policy to namespaces with label env=prod
+    namespaceSelector:
+      matchLabels:
+        env: prod                    # Only production namespaces
+        controlled-by: freeze-operator  # Namespace must have this label
+    
+    # Apply to these workload types
+    kinds: [Deployment, StatefulSet, DaemonSet, CronJob]
+  
+  rules:
+    # Block these operations INSIDE the time window (startTime - endTime)
+    deny: [ROLL_OUT, SCALE, CREATE, DELETE]
+  
+  message:
+    reason: "Production is frozen until end of day (ChangeFreeze is active)"

@@ -1,0 +1,49 @@
+# FreezeException - ALLOWS changes despite other freeze policies
+#
+# How it works:
+# 1. This is an OVERRIDE mechanism (higher priority than MaintenanceWindow and ChangeFreeze)
+# 2. target.objectSelector: selects SPECIFIC workloads by labels (not namespaces!)
+# 3. If a workload has label emergency=true → allow operations
+# 4. If a workload does NOT have this label → other policies work as usual
+# 5. constraints: additional restrictions (who can make changes)
+#
+# In this example:
+# - Allow operations for workloads with label emergency=true
+# - But ONLY the kubernetes-admin user can make changes
+# - All other workloads (without emergency=true) are blocked by other policies
+
+apiVersion: freeze-operator.io/v1alpha1
+kind: FreezeException
+metadata:
+  name: emergency-override
+  labels:
+    # These two labels help us find and delete this resource later
+    test-suite: simple-example       # Common label for all test resources
+    test-type: freezeexception       # Shows which test type this is
+spec:
+  # Period when this exception is active
+  activeFrom: "2026-02-01T00:00:00Z"  # Active from the start of the day
+  activeTo: "2026-02-01T23:59:59Z"    # Until the end of the day
+  
+  # Allow these operations for emergency workloads
+  allow: [ROLL_OUT, SCALE, CREATE, DELETE]
+  
+  # Reason for the exception (required field)
+  reason: "Emergency workload - exception allows critical changes"
+  
+  target:
+    # IMPORTANT: objectSelector selects WORKLOADS, not namespaces!
+    # Any Deployment/StatefulSet/etc with label emergency=true will get the exception
+    objectSelector:
+      matchLabels:
+        emergency: "true"            # Workload must have label emergency=true
+        controlled-by: freeze-operator  # Workload must have this label
+    
+    # Apply to these workload kinds
+    kinds: [Deployment, StatefulSet, DaemonSet, CronJob]
+  
+  constraints:
+    # ADDITIONAL restriction: only this user can make changes
+    # Even if a workload has emergency=true, if the user is not in the list → DENY
+    allowedUsers:
+      - "kubernetes-admin"           # Replace with your username from kubeconfig
