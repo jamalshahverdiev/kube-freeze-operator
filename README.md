@@ -107,7 +107,7 @@ There are end-to-end scripts under [hack](hack/) that redeploy the operator (opt
 
 Common environment variables:
 
-- `IMG` (default: `jamalshahverdiev/kube-freeze-operator:v1.0.1`) — operator image to deploy
+- `IMG` (default: `jamalshahverdiev/kube-freeze-operator:v1.0.3`) — operator image to deploy
 - `REDEPLOY` (default: `true`) — whether to run `make deploy` before validations
 - `PROD_NS` / `DEV_NS` — namespaces used by the script (names differ per script)
 
@@ -121,7 +121,7 @@ bash hack/validate_maintenancewindow.sh
 REDEPLOY=false bash hack/validate_maintenancewindow.sh
 
 # Validate a specific image tag
-IMG=jamalshahverdiev/kube-freeze-operator:v1.0.1 bash hack/validate_changefreeze.sh
+IMG=jamalshahverdiev/kube-freeze-operator:v1.0.3 bash hack/validate_changefreeze.sh
 ```
 
 ### Uninstall

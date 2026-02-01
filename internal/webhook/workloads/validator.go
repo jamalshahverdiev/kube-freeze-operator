@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,7 +30,10 @@ import (
 	"github.com/jamalshahverdiev/kube-freeze-operator/internal/policy"
 )
 
-const WebhookPath = "/validate-freeze-operator-io-v1alpha1-workloads"
+const (
+	WebhookPath = "/validate-freeze-operator-io-v1alpha1-workloads"
+	appsGroup   = "apps"
+)
 
 type Validator struct {
 	Client  client.Client
@@ -57,12 +61,8 @@ func (v *Validator) Handle(ctx context.Context, req admission.Request) admission
 	}
 
 	// Allow the operator itself to bypass enforcement to avoid deadlocks.
-	if opNs != "" {
-		for _, g := range req.UserInfo.Groups {
-			if g == "system:serviceaccounts:"+opNs {
-				return admission.Allowed("operator serviceaccount bypass")
-			}
-		}
+	if opNs != "" && slices.Contains(req.UserInfo.Groups, "system:serviceaccounts:"+opNs) {
+		return admission.Allowed("operator serviceaccount bypass")
 	}
 
 	var (
@@ -73,7 +73,7 @@ func (v *Validator) Handle(ctx context.Context, req admission.Request) admission
 
 	// NOTE: `kubectl scale` typically hits the /scale subresource (e.g. deployments/scale),
 	// which would bypass enforcement if we only match on Kind=Deployment and Resource=deployments.
-	if req.SubResource == "scale" && req.Resource.Group == "apps" {
+	if req.SubResource == "scale" && req.Resource.Group == appsGroup {
 		if req.Operation != admissionv1.Update {
 			return admission.Allowed("scale subresource non-update")
 		}
@@ -251,11 +251,11 @@ func (v *Validator) decode(raw runtime.RawExtension, kind freezev1alpha1.TargetK
 
 func mapGVKToTargetKind(group string, kind string) (freezev1alpha1.TargetKind, bool) {
 	switch {
-	case group == "apps" && kind == "Deployment":
+	case group == appsGroup && kind == "Deployment":
 		return freezev1alpha1.TargetKindDeployment, true
-	case group == "apps" && kind == "StatefulSet":
+	case group == appsGroup && kind == "StatefulSet":
 		return freezev1alpha1.TargetKindStatefulSet, true
-	case group == "apps" && kind == "DaemonSet":
+	case group == appsGroup && kind == "DaemonSet":
 		return freezev1alpha1.TargetKindDaemonSet, true
 	case group == "batch" && kind == "CronJob":
 		return freezev1alpha1.TargetKindCronJob, true
