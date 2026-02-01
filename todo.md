@@ -1,64 +1,64 @@
-# kube-freeze-operator — Technical TODO Plan (v0.1)
+*# kube-freeze-operator — Technical TODO Plan (v1.0)
 
-> Цель v0.1: дать понятный и надежный механизм Change Freeze / Maintenance Windows:
+> Goal v1.0: provide a clear and reliable Change Freeze / Maintenance Windows mechanism:
 > - CRD: MaintenanceWindow, ChangeFreeze, FreezeException
 > - Enforcement: Validating Admission Webhook (Deployments/StatefulSets/DaemonSets/CronJobs)
-> - Controller: suspend/un-suspend CronJobs по активным правилам
-> - UX: понятные deny-сообщения + Events/metrics минимум
-> - Helm chart + документация + CI
+> - Controller: suspend/un-suspend CronJobs based on active policies
+> - UX: clear deny messages + Events/metrics minimum
+> - Helm chart + documentation + CI
 
 ---
 
 ## 0) Project bootstrap
 
-- [ ] Выбрать итоговое название и нейминг (repo/chart/image/namespace)
+- [ ] Choose final name and naming (repo/chart/image/namespace)
   - [ ] Repo: `kube-freeze-operator`
   - [ ] Namespace: `kube-freeze-operator`
   - [ ] Labels/annotations prefix: `freeze-operator.io/*`
-- [ ] Определить лицензирование и метаданные OSS
-  - [ ] LICENSE (Apache-2.0 или MIT)
+- [ ] Define licensing and OSS metadata
+  - [ ] LICENSE (Apache-2.0 or MIT)
   - [ ] CODE_OF_CONDUCT.md
   - [ ] CONTRIBUTING.md
   - [ ] SECURITY.md
-- [ ] Структура репозитория
+- [ ] Repository structure
   - [ ] `/cmd/` (manager/webhook)
   - [ ] `/api/` (CRD types)
   - [ ] `/internal/` (policy engine, utils)
   - [ ] `/config/` (rbac, manager, webhook, crd, samples)
   - [ ] `/charts/` (Helm chart)
-  - [ ] `/docs/` (архитектура, how-to)
-  - [ ] `/examples/` (реальные YAML сценарии)
-- [ ] Определить версии и релизный процесс
-  - [ ] SemVer: `v0.1.0` = первый стабильный MVP
+  - [ ] `/docs/` (architecture, how-to)
+  - [ ] `/examples/` (real YAML scenarios)
+- [ ] Define versions and release process
+  - [ ] SemVer: `v1.0.0` = first stable MVP
   - [ ] Release artifacts: container image + helm chart + manifests
 
 ---
 
-## 1) Спецификация (до кода)
+## 1) Specification (before code)
 
-- [ ] Зафиксировать v0.1 scope и non-goals (в README + docs/spec.md)
-- [ ] Зафиксировать список поддерживаемых ресурсов v0.1:
+- [ ] Define v1.0 scope and non-goals (in README + docs/spec.md)
+- [ ] Define list of supported resources v1.0:
   - [ ] Deployments
   - [ ] StatefulSets
   - [ ] DaemonSets
   - [ ] CronJobs
-- [ ] Зафиксировать операции (Actions) и правила определения:
-  - [ ] CREATE / DELETE (по admission operation)
-  - [ ] UPDATE → классификация:
-    - [ ] ROLL_OUT (изменение PodTemplate: `spec.template`)
-    - [ ] SCALE (изменение `spec.replicas`)
-    - [ ] CronJob mutation (schedule/jobTemplate и т.п.) — решить как маппить (в ROLL_OUT или отдельный флаг)
-- [ ] Зафиксировать приоритеты политик (детерминированно):
-  - [ ] Сначала определить “есть ли активный запрет”
-  - [ ] Затем применить Exception как override только для разрешенных операций
-- [ ] Решить модель окон (для ясности):
-  - [ ] v0.1: `mode = DenyOutsideWindows` для MaintenanceWindow (вне окон запрещено)
-  - [ ] ChangeFreeze всегда “deny in range”
-- [ ] Зафиксировать UX deny-сообщения (шаблон):
+- [ ] Define operations (Actions) and determination rules:
+  - [ ] CREATE / DELETE (by admission operation)
+  - [ ] UPDATE → classification:
+    - [ ] ROLL_OUT (PodTemplate change: `spec.template`)
+    - [ ] SCALE (change `spec.replicas`)
+    - [ ] CronJob mutation (schedule/jobTemplate etc.) — decide how to map (to ROLL_OUT or separate flag)
+- [ ] Define policy priorities (deterministically):
+  - [ ] First determine "is there an active deny"
+  - [ ] Then apply Exception as override only for allowed operations
+- [ ] Decide window model (for clarity):
+  - [ ] v1.0: `mode = DenyOutsideWindows` for MaintenanceWindow (deny outside windows)
+  - [ ] ChangeFreeze always "deny in range"
+- [ ] Define UX deny-messages (template):
   - [ ] policy name + type
   - [ ] reason
-  - [ ] когда будет разрешено (next allowed window / endTime)
-  - [ ] какие операции запрещены/разрешены
+  - [ ] when it will be allowed (next allowed window / endTime)
+  - [ ] which operations are denied/allowed
   - [ ] docsURL + contact
 
 ---
@@ -66,13 +66,13 @@
 ## 2) CRD Design (API contracts)
 
 ### 2.1 MaintenanceWindow CRD
-- [ ] Определить `spec` поля:
+- [ ] Define `spec` fields:
   - [ ] `timezone` (IANA)
-  - [ ] `mode` (v0.1: `DenyOutsideWindows`)
+  - [ ] `mode` (v1.0: `DenyOutsideWindows`)
   - [ ] `windows[]`:
     - [ ] `name`
-    - [ ] `schedule` (cron) — договориться о формате
-    - [ ] `duration` (например, `6h`)
+    - [ ] `schedule` (cron) — agree on format
+    - [ ] `duration` (e.g., `6h`)
   - [ ] `target`:
     - [ ] `namespaceSelector`
     - [ ] `objectSelector`
@@ -85,7 +85,7 @@
     - [ ] `reason`
     - [ ] `docsURL`
     - [ ] `contact`
-- [ ] Определить `status` поля:
+- [ ] Define `status` fields:
   - [ ] `active` (bool)
   - [ ] `activeWindow` (name, start/end)
   - [ ] `nextWindow` (start/end)
@@ -93,169 +93,169 @@
   - [ ] conditions (Ready/Degraded/InvalidSchedule)
 
 ### 2.2 ChangeFreeze CRD
-- [ ] Определить `spec` поля:
+- [ ] Define `spec` fields:
   - [ ] `startTime`, `endTime` (RFC3339)
-  - [ ] `timezone` (опционально; если RFC3339 содержит offset, можно не требовать)
+  - [ ] `timezone` (optional; if RFC3339 contains offset, can be omitted)
   - [ ] `target` (selectors)
   - [ ] `rules.deny[]`
   - [ ] `behavior.suspendCronJobs`
   - [ ] `message.*`
-- [ ] Определить `status`:
+- [ ] Define `status`:
   - [ ] `active` (bool)
   - [ ] `timeRemaining`
   - [ ] conditions
 
 ### 2.3 FreezeException CRD
-- [ ] Определить `spec` поля:
-  - [ ] `activeFrom`, `activeTo` (или `duration`)
+- [ ] Define `spec` fields:
+  - [ ] `activeFrom`, `activeTo` (or `duration`)
   - [ ] `target` (selectors)
   - [ ] `allow[]` (ROLL_OUT/SCALE/CREATE/DELETE)
   - [ ] `constraints`:
     - [ ] `requireLabels` (map)
-    - [ ] `allowedUsers` (list) — optional v0.1?
-    - [ ] `allowedGroups` (list) — optional v0.1?
+    - [ ] `allowedUsers` (list) — optional v1.0?
+    - [ ] `allowedGroups` (list) — optional v1.0?
   - [ ] `reason`
   - [ ] `ticketURL`
   - [ ] `approvedBy` (optional)
-- [ ] Определить `status`:
+- [ ] Define `status`:
   - [ ] `active` (bool)
   - [ ] conditions (Valid/Expired)
 
 ### 2.4 API conventions
-- [ ] Прописать валидации схемы:
-  - [ ] обязательные поля (timezone, windows, start/end, etc.)
+- [ ] Define schema validations:
+  - [ ] required fields (timezone, windows, start/end, etc.)
   - [ ] endTime > startTime
   - [ ] windows.duration > 0
-  - [ ] deny/allow не пустые при необходимости
-- [ ] Решить группировку API:
-  - [ ] `freeze-operator.io/v1alpha1` для v0.1
-- [ ] Добавить `config/samples/` для каждого CRD (минимум 2 сценария)
+  - [ ] deny/allow not empty when required
+- [ ] Decide API grouping:
+  - [ ] `freeze-operator.io/v1alpha1` for v1.0
+- [ ] Add `config/samples/` for each CRD (at least 2 scenarios)
 
 ---
 
-## 3) Policy Engine (логика вычисления решения)
+## 3) Policy Engine (decision computation logic)
 
-- [ ] Спроектировать внутренний “policy evaluator”:
-  - [ ] Вход: (now, resource meta, kind, namespace labels, object labels, operation, old/new diff)
-  - [ ] Выход: Allow/Deny + matchedPolicy + reason + nextAllowedTime
-- [ ] Реализовать шаги вычисления:
-  - [ ] Найти совпадающие ChangeFreeze (по selectors)
-  - [ ] Найти совпадающие MaintenanceWindow
-  - [ ] Определить active deny state:
+- [ ] Design internal "policy evaluator":
+  - [ ] Input: (now, resource meta, kind, namespace labels, object labels, operation, old/new diff)
+  - [ ] Output: Allow/Deny + matchedPolicy + reason + nextAllowedTime
+- [ ] Implement computation steps:
+  - [ ] Find matching ChangeFreeze (by selectors)
+  - [ ] Find matching MaintenanceWindow
+  - [ ] Determine active deny state:
     - [ ] ChangeFreeze active? → deny state
     - [ ] MaintenanceWindow mode DenyOutsideWindows:
-      - [ ] если сейчас не в окне → deny state
-      - [ ] если сейчас в окне → allow state (если нет ChangeFreeze)
-  - [ ] Если deny state активен:
-    - [ ] Проверить FreezeException (по selectors + active time)
-    - [ ] Проверить constraints (labels/users/groups если включено)
-    - [ ] Если exception разрешает конкретную операцию → allow
-    - [ ] Иначе deny
-- [ ] Точная логика diff:
-  - [ ] ROLL_OUT detection для workloads
-  - [ ] SCALE detection для deployments/statefulsets
-  - [ ] CronJob mutation mapping (утвердить)
-- [ ] Unit-тесты policy engine (табличные тесты):
+      - [ ] if currently not in window → deny state
+      - [ ] if currently in window → allow state (if no ChangeFreeze)
+  - [ ] If deny state active:
+    - [ ] Check FreezeException (by selectors + active time)
+    - [ ] Check constraints (labels/users/groups if enabled)
+    - [ ] If exception allows specific operation → allow
+    - [ ] Otherwise deny
+- [ ] Precise diff logic:
+  - [ ] ROLL_OUT detection for workloads
+  - [ ] SCALE detection for deployments/statefulsets
+  - [ ] CronJob mutation mapping (confirm)
+- [ ] Unit tests policy engine (table tests):
   - [ ] “prod deny outside window”
   - [ ] “active changefreeze overrides window”
   - [ ] “exception allows rollout but not delete”
   - [ ] “label constraint required”
-  - [ ] timezone correctness (DST кейсы хотя бы базово)
+  - [ ] timezone correctness (DST cases at least basic)
 
 ---
 
 ## 4) Validating Admission Webhook (enforcement)
 
-- [ ] Выбрать объекты для перехвата:
+- [ ] Choose objects to intercept:
   - [ ] deployments.apps
   - [ ] statefulsets.apps
   - [ ] daemonsets.apps
   - [ ] cronjobs.batch
-- [ ] Определить operations:
+- [ ] Define operations:
   - [ ] CREATE, UPDATE, DELETE
-- [ ] Реализовать обработчик:
-  - [ ] Извлечение userInfo (username, groups)
-  - [ ] Определение operation type (ROLL_OUT/SCALE/…)
-  - [ ] Вызов policy engine
-  - [ ] Формирование deny message по шаблону UX
-- [ ] Добавить “дружелюбные” details:
+- [ ] Implement handler:
+  - [ ] Extract userInfo (username, groups)
+  - [ ] Determine operation type (ROLL_OUT/SCALE/…)
+  - [ ] Call policy engine
+  - [ ] Format deny message by UX template
+- [ ] Add "friendly" details:
   - [ ] policy type/name
   - [ ] next allowed window or freeze end time
   - [ ] docsURL/contact if present
-- [ ] Решить failurePolicy:
+- [ ] Decide failurePolicy:
   - [ ] configurable (chart values):
     - [ ] prod default: Fail
     - [ ] dev default: Ignore
-- [ ] Метрики webhook:
+- [ ] Webhook metrics:
   - [ ] allowed_total/denied_total + labels
-- [ ] Логи:
+- [ ] Logs:
   - [ ] structured logging: policy, namespace, kind, op, user, decision
 
 ---
 
 ## 5) CronJob Controller (suspend/un-suspend)
 
-- [ ] Определить поведение “managed”:
-  - [ ] Если freeze активен и `suspendCronJobs=true`:
-    - [ ] при `spec.suspend=false` → set true + annotate managed + store original
-  - [ ] Когда freeze не активен:
-    - [ ] вернуть исходное значение только тем CronJob, что managed
-    - [ ] удалить managed-annotations
-- [ ] Определить аннотации:
+- [ ] Define "managed" behavior:
+  - [ ] If freeze active and `suspendCronJobs=true`:
+    - [ ] when `spec.suspend=false` → set true + annotate managed + store original
+  - [ ] When freeze not active:
+    - [ ] restore original value only for managed CronJobs
+    - [ ] remove managed-annotations
+- [ ] Define annotations:
   - [ ] `freeze-operator.io/managed: "true"`
   - [ ] `freeze-operator.io/original-suspend: "false|true"`
   - [ ] `freeze-operator.io/managed-by-policy: "<policyRef>"`
-- [ ] Избежать конфликтов:
-  - [ ] если пользователь вручную изменил suspend во время managed — определить правило (например “не трогать, если original отсутствует”)
-- [ ] Нагрузочные нюансы:
-  - [ ] избегать полного листинга всего кластера без нужды
-  - [ ] использовать selectors и индексы (по namespace label возможно через кэш)
-- [ ] Unit/integration тесты:
-  - [ ] переход freeze on/off
-  - [ ] CronJob already suspended (не перезаписывать original)
-  - [ ] несколько политик → выбрать корректную (по приоритету)
+- [ ] Avoid conflicts:
+  - [ ] if user manually changed suspend during managed — define rule (e.g., "don't touch if original absent")
+- [ ] Load considerations:
+  - [ ] avoid full cluster listing without need
+  - [ ] use selectors and indexes (by namespace label possibly via cache)
+- [ ] Unit/integration tests:
+  - [ ] freeze on/off transition
+  - [ ] CronJob already suspended (don't overwrite original)
+  - [ ] multiple policies → choose correct (by priority)
 
 ---
 
 ## 6) Status + Reconciliation Observability
 
-- [ ] Обновление status для CRD:
+- [ ] Update status for CRD:
   - [ ] `active`, `nextWindow`, conditions
 - [ ] Events:
   - [ ] `FreezeActivated`, `FreezeDeactivated`
   - [ ] `CronJobSuspended`, `CronJobResumed`
-  - [ ] `WebhookDenied` (опционально, осторожно с шумом)
+  - [ ] `WebhookDenied` (optional, careful with noise)
 - [ ] Prometheus metrics (MVP):
   - [ ] `freeze_active{policy,kind}`
   - [ ] `freeze_webhook_denied_total{policy,ns,kind,action}`
   - [ ] `freeze_cronjob_suspended_total{policy,ns}`
 - [ ] Health endpoints:
-  - [ ] liveness/readiness для manager
+  - [ ] liveness/readiness for manager
 
 ---
 
 ## 7) Security / RBAC
 
-- [ ] RBAC для оператора:
-  - [ ] get/list/watch нужных ресурсов
-  - [ ] patch CronJobs (и только их)
-  - [ ] update status для CRDs
+- [ ] RBAC for operator:
+  - [ ] get/list/watch required resources
+  - [ ] patch CronJobs (and only them)
+  - [ ] update status for CRDs
   - [ ] events create
-- [ ] RBAC рекомендация пользователям:
-  - [ ] ограничить создание `FreezeException` отдельной группой (SRE/Platform)
+- [ ] RBAC recommendation for users:
+  - [ ] restrict `FreezeException` creation to separate group (SRE/Platform)
 - [ ] Webhook TLS:
-  - [ ] cert-manager integration (опционально) или self-signed через helm hooks
-- [ ] Подумать про “break-glass” сценарий:
-  - [ ] disable webhook via chart value / annotation (операционный подход)
+  - [ ] cert-manager integration (optional) or self-signed via helm hooks
+- [ ] Consider "break-glass" scenario:
+  - [ ] disable webhook via chart value / annotation (operational approach)
 
 ---
 
 ## 8) Packaging & Delivery
 
 ### 8.1 Container image
-- [ ] Multi-arch build (amd64/arm64) — optional v0.1
+- [ ] Multi-arch build (amd64/arm64) — optional v1.0
 - [ ] Minimal base image (distroless/alpine)
-- [ ] SBOM/signing — optional v0.1
+- [ ] SBOM/signing — optional v1.0
 
 ### 8.2 Helm chart
 - [ ] Chart scaffold:
@@ -269,10 +269,10 @@
   - [ ] log level
   - [ ] namespace install
 - [ ] Post-install notes:
-  - [ ] как применить sample policies
+  - [ ] how to apply sample policies
 
 ### 8.3 Manifests (kustomize)
-- [ ] `/config/default` для “kubectl apply” установки без Helm (optional)
+- [ ] `/config/default` for "kubectl apply" install without Helm (optional)
 
 ---
 
@@ -283,32 +283,32 @@
   - [ ] unit tests
   - [ ] build image
   - [ ] helm lint
-  - [ ] e2e (kind cluster) — optional, но очень желательно
+  - [ ] e2e (kind cluster) — optional, but highly desirable
 - [ ] Release flow:
   - [ ] tag → build/push image
-  - [ ] package/publish helm chart (GitLab package registry или chart repo)
-- [ ] Автоматическая генерация CRD manifests (контроль, чтобы всегда актуально)
+  - [ ] package/publish helm chart (GitLab package registry or chart repo)
+- [ ] Automatic CRD manifests generation (control to keep always up-to-date)
 
 ---
 
 ## 10) Testing Strategy
 
-### 10.1 Unit tests (обязательные)
-- [ ] Policy engine (все основные кейсы)
+### 10.1 Unit tests (mandatory)
+- [ ] Policy engine (all main cases)
 - [ ] Diff detection (rollout/scale)
 - [ ] Timezone/window evaluation
 
-### 10.2 Integration tests (желательно)
-- [ ] envtest (controller-runtime) для webhook + controller логики
+### 10.2 Integration tests (desirable)
+- [ ] envtest (controller-runtime) for webhook + controller logic
 - [ ] kind e2e:
-  - [ ] установить operator
-  - [ ] применить policy
-  - [ ] попытаться обновить deployment → ожидаем deny
-  - [ ] создать exception → ожидаем allow (только для разрешенного действия)
-  - [ ] cronjob suspend/resume корректно
+  - [ ] install operator
+  - [ ] apply policy
+  - [ ] try to update deployment → expect deny
+  - [ ] create exception → expect allow (only for allowed action)
+  - [ ] cronjob suspend/resume correctly
 
 ### 10.3 Performance sanity
-- [ ] проверить поведение при 1000+ namespaces (без квадратичного роста листингов)
+- [ ] check behavior with 1000+ namespaces (without quadratic growth of listings)
 
 ---
 
@@ -318,16 +318,16 @@
   - [ ] What/Why
   - [ ] Quickstart (install + sample policy)
   - [ ] Concepts (Freeze/Maintenance/Exception)
-  - [ ] Supported resources v0.1
+  - [ ] Supported resources v1.0
 - [ ] docs/spec.md:
-  - [ ] формальные правила, приоритеты
+  - [ ] formal rules, priorities
 - [ ] docs/usage.md:
-  - [ ] примеры для prod/stage
-  - [ ] как сделать hotfix exception
+  - [ ] examples for prod/stage
+  - [ ] how to make hotfix exception
 - [ ] docs/troubleshooting.md:
-  - [ ] “почему ArgoCD ругается”
-  - [ ] “как узнать какая policy активна”
-  - [ ] “как временно отключить enforcement”
+  - [ ] "why ArgoCD complains"
+  - [ ] "how to know which policy is active"
+  - [ ] "how to temporarily disable enforcement"
 - [ ] docs/security.md:
   - [ ] RBAC recommendations
   - [ ] exception approval process
@@ -338,34 +338,35 @@
 
 ---
 
-## 12) v0.1 Release Checklist
+## 12) v1.0 Release Checklist
 
-- [ ] Все CRDs имеют schema validations и samples
-- [ ] Webhook стабильно работает на основных объектах
-- [ ] CronJob suspend/resume без побочных эффектов
-- [ ] Helm chart устанавливается “в один шаг”
-- [ ] Минимум метрик + понятные deny messages
-- [ ] Документация: quickstart + troubleshooting
-- [ ] Tag `v0.1.0` + release notes
+- [ ] All CRDs have schema validations and samples
+- [ ] Webhook works stably on main objects
+- [ ] CronJob suspend/resume without side effects
+- [ ] Helm chart installs "in one step"
+- [ ] Minimum metrics + clear deny messages
+- [ ] Documentation: quickstart + troubleshooting
+- [ ] Tag `v1.0.0` + release notes
 
 ---
 
-# Roadmap (после v0.1)
+# Roadmap (after v1.0)
 
-## v0.2 — GitOps-friendly pause
-- [x] ArgoCD Application pause/unpause (опционально)
+## v2.0 — GitOps-friendly pause
+- [x] ArgoCD Application pause/unpause (optional)
 - [ ] Flux suspend/resume
-- [ ] Снижение “шума” в GitOps при deny
+- [ ] Reduce "noise" in GitOps on deny
 
-## v0.3 — CI helper API
+## v3.0 — CI helper API
 - [ ] REST endpoint `can-i-deploy?ns=&kind=&name=...`
-- [ ] Готовые templates для GitLab CI / GitHub Actions
+- [ ] Ready-made templates for GitLab CI / GitHub Actions
 
-## v0.4 — More targets & policies
-- [ ] Поддержка Jobs
-- [ ] Более гибкие режимы окон (deny windows)
+## v4.0 — More targets & policies
+- [ ] Jobs support
+- [ ] More flexible window modes (deny windows)
 - [ ] Global policy / multi-cluster strategy
 
-## v0.5 — Better auditing
-- [ ] CRD `FreezeEvent` (опционально)
-- [ ] интеграция с внешним audit sink (webhook/log exporter)
+## v5.0 — Better auditing
+- [ ] CRD `FreezeEvent` (optional)
+- [ ] integration with external audit sink (webhook/log exporter)
+*

@@ -213,6 +213,7 @@ func main() {
 		mgr.GetWebhookServer().Register(workloads.WebhookPath, &admission.Webhook{
 			Handler: &workloads.Validator{
 				Client:  mgr.GetClient(),
+				Reader:  mgr.GetAPIReader(),
 				Decoder: decoder,
 			},
 		})

@@ -4,6 +4,8 @@ package workloads
 // +kubebuilder:rbac:groups=freeze-operator.io,resources=maintenancewindows,verbs=get;list;watch
 // +kubebuilder:rbac:groups=freeze-operator.io,resources=changefreezes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=freeze-operator.io,resources=freezeexceptions,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get
 
 import (
 	"context"
@@ -31,6 +33,7 @@ const WebhookPath = "/validate-freeze-operator-io-v1alpha1-workloads"
 
 type Validator struct {
 	Client  client.Client
+	Reader  client.Reader
 	Decoder admission.Decoder
 
 	OperatorNamespace string
@@ -41,6 +44,11 @@ func (v *Validator) Handle(ctx context.Context, req admission.Request) admission
 
 	if v.Client == nil {
 		return admission.Errored(500, fmt.Errorf("client is nil"))
+	}
+	reader := v.Reader
+	if reader == nil {
+		// Fallback to the cached client if no APIReader was injected.
+		reader = v.Client
 	}
 
 	opNs := v.OperatorNamespace
@@ -57,15 +65,63 @@ func (v *Validator) Handle(ctx context.Context, req admission.Request) admission
 		}
 	}
 
-	kind, ok := mapGVKToTargetKind(req.Kind.Group, req.Kind.Kind)
-	if !ok {
-		return admission.Allowed("kind not enforced")
-	}
+	var (
+		kind      freezev1alpha1.TargetKind
+		action    freezev1alpha1.Action
+		objLabels map[string]string
+	)
 
-	action, objLabels, err := v.classify(req, kind)
-	if err != nil {
-		log.Error(err, "classify request")
-		return admission.Errored(400, err)
+	// NOTE: `kubectl scale` typically hits the /scale subresource (e.g. deployments/scale),
+	// which would bypass enforcement if we only match on Kind=Deployment and Resource=deployments.
+	if req.SubResource == "scale" && req.Resource.Group == "apps" {
+		if req.Operation != admissionv1.Update {
+			return admission.Allowed("scale subresource non-update")
+		}
+		switch req.Resource.Resource {
+		case "deployments":
+			kind = freezev1alpha1.TargetKindDeployment
+		case "statefulsets":
+			kind = freezev1alpha1.TargetKindStatefulSet
+		default:
+			return admission.Allowed("scale subresource not enforced")
+		}
+		action = freezev1alpha1.ActionScale
+
+		// Scale subresource request objects are typically autoscaling/v1 Scale and do not carry
+		// the workload labels we need for objectSelector/constraints; fetch the workload.
+		ns := req.Namespace
+		name := req.Name
+		if ns == "" || name == "" {
+			return admission.Allowed("scale request missing namespace or name")
+		}
+		switch kind {
+		case freezev1alpha1.TargetKindDeployment:
+			dep := &appsv1.Deployment{}
+			if err := reader.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, dep); err != nil {
+				return admission.Errored(500, fmt.Errorf("get deployment %s/%s: %w", ns, name, err))
+			}
+			objLabels = dep.Labels
+		case freezev1alpha1.TargetKindStatefulSet:
+			sts := &appsv1.StatefulSet{}
+			if err := reader.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, sts); err != nil {
+				return admission.Errored(500, fmt.Errorf("get statefulset %s/%s: %w", ns, name, err))
+			}
+			objLabels = sts.Labels
+		}
+	} else {
+		k, ok := mapGVKToTargetKind(req.Kind.Group, req.Kind.Kind)
+		if !ok {
+			return admission.Allowed("kind not enforced")
+		}
+		kind = k
+
+		a, labels, err := v.classify(req, kind)
+		if err != nil {
+			log.Error(err, "classify request")
+			return admission.Errored(400, err)
+		}
+		action = a
+		objLabels = labels
 	}
 
 	ns := req.Namespace
@@ -77,6 +133,13 @@ func (v *Validator) Handle(ctx context.Context, req admission.Request) admission
 	nsObj := &corev1.Namespace{}
 	if err := v.Client.Get(ctx, types.NamespacedName{Name: ns}, nsObj); err != nil {
 		return admission.Errored(500, fmt.Errorf("get namespace %q: %w", ns, err))
+	}
+
+	// Never block operations inside a terminating namespace.
+	// The namespace is already being deleted; blocking controller cleanup operations
+	// (DELETE, finalizer patches, status updates) can cause permanent deadlocks.
+	if nsObj.DeletionTimestamp != nil {
+		return admission.Allowed("namespace is terminating: bypass freeze policies")
 	}
 
 	ev := &policy.Evaluator{Client: v.Client}
