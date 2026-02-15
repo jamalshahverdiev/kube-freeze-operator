@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-IMG_DEFAULT="jamalshahverdiev/kube-freeze-operator:v1.0.3"
+IMG_DEFAULT="jamalshahverdiev/kube-freeze-operator:v1.0.4"
 IMG="${IMG:-$IMG_DEFAULT}"
 REDEPLOY="${REDEPLOY:-true}"
 

@@ -8,7 +8,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type evaluatedWindow struct {
+// EvaluatedWindow represents the result of evaluating a cron-based window
+type EvaluatedWindow struct {
 	Active      bool
 	ActiveStart *time.Time
 	ActiveEnd   *time.Time
@@ -16,19 +17,20 @@ type evaluatedWindow struct {
 	NextEnd     *time.Time
 }
 
-func evalCronWindow(now time.Time, tz string, schedule string, duration metav1.Duration) (evaluatedWindow, error) {
+// EvalCronWindow evaluates a cron-based maintenance window at a given time
+func EvalCronWindow(now time.Time, tz string, schedule string, duration metav1.Duration) (EvaluatedWindow, error) {
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
-		return evaluatedWindow{}, fmt.Errorf("invalid timezone %q: %w", tz, err)
+		return EvaluatedWindow{}, fmt.Errorf("invalid timezone %q: %w", tz, err)
 	}
 	if duration.Duration <= 0 {
-		return evaluatedWindow{}, fmt.Errorf("duration must be > 0")
+		return EvaluatedWindow{}, fmt.Errorf("duration must be > 0")
 	}
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	sch, err := parser.Parse(schedule)
 	if err != nil {
-		return evaluatedWindow{}, fmt.Errorf("invalid schedule %q: %w", schedule, err)
+		return EvaluatedWindow{}, fmt.Errorf("invalid schedule %q: %w", schedule, err)
 	}
 
 	nowLoc := now.In(loc)
@@ -48,7 +50,7 @@ func evalCronWindow(now time.Time, tz string, schedule string, duration metav1.D
 
 	next := sch.Next(nowLoc)
 
-	out := evaluatedWindow{}
+	out := EvaluatedWindow{}
 	if !prev.IsZero() {
 		end := prev.Add(duration.Duration)
 		if !nowLoc.Before(prev) && nowLoc.Before(end) {
@@ -66,4 +68,22 @@ func evalCronWindow(now time.Time, tz string, schedule string, duration metav1.D
 	out.NextEnd = &ne
 
 	return out, nil
+}
+
+// evalCronWindow is the old unexported version for backward compatibility
+func evalCronWindow(now time.Time, tz string, schedule string, duration metav1.Duration) (evaluatedWindow, error) {
+	res, err := EvalCronWindow(now, tz, schedule, duration)
+	if err != nil {
+		return evaluatedWindow{}, err
+	}
+	return evaluatedWindow(res), nil
+}
+
+// evaluatedWindow is the old unexported type for backward compatibility
+type evaluatedWindow struct {
+	Active      bool
+	ActiveStart *time.Time
+	ActiveEnd   *time.Time
+	NextStart   *time.Time
+	NextEnd     *time.Time
 }

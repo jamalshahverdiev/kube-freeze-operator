@@ -10,6 +10,46 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-freeze-operator-io-v1alpha1-changefreeze
+  failurePolicy: Fail
+  name: vchangefreeze-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - freeze-operator.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - changefreezes
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-freeze-operator-io-v1alpha1-freezeexception
+  failurePolicy: Fail
+  name: vfreezeexception-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - freeze-operator.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - freezeexceptions
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-freeze-operator-io-v1alpha1-maintenancewindow
   failurePolicy: Fail
   name: vmaintenancewindow-v1alpha1.kb.io

@@ -38,6 +38,7 @@ import (
 
 	freezeoperatorv1alpha1 "github.com/jamalshahverdiev/kube-freeze-operator/api/v1alpha1"
 	"github.com/jamalshahverdiev/kube-freeze-operator/internal/controller"
+	_ "github.com/jamalshahverdiev/kube-freeze-operator/internal/metrics"
 	webhookv1alpha1 "github.com/jamalshahverdiev/kube-freeze-operator/internal/webhook/v1alpha1"
 	"github.com/jamalshahverdiev/kube-freeze-operator/internal/webhook/workloads"
 	// +kubebuilder:scaffold:imports
@@ -182,22 +183,25 @@ func main() {
 	}
 
 	if err := (&controller.MaintenanceWindowReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("maintenancewindow-controller"), //nolint:staticcheck
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MaintenanceWindow")
 		os.Exit(1)
 	}
 	if err := (&controller.ChangeFreezeReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("changefreeze-controller"), //nolint:staticcheck
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ChangeFreeze")
 		os.Exit(1)
 	}
 	if err := (&controller.FreezeExceptionReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("freezeexception-controller"), //nolint:staticcheck
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "FreezeException")
 		os.Exit(1)
@@ -206,6 +210,14 @@ func main() {
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err := webhookv1alpha1.SetupMaintenanceWindowWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "MaintenanceWindow")
+			os.Exit(1)
+		}
+		if err := webhookv1alpha1.SetupChangeFreezeWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "ChangeFreeze")
+			os.Exit(1)
+		}
+		if err := webhookv1alpha1.SetupFreezeExceptionWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "FreezeException")
 			os.Exit(1)
 		}
 

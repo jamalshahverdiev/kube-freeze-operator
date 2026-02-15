@@ -27,6 +27,7 @@ import (
 
 	freezev1alpha1 "github.com/jamalshahverdiev/kube-freeze-operator/api/v1alpha1"
 	"github.com/jamalshahverdiev/kube-freeze-operator/internal/diff"
+	"github.com/jamalshahverdiev/kube-freeze-operator/internal/metrics"
 	"github.com/jamalshahverdiev/kube-freeze-operator/internal/policy"
 )
 
@@ -158,7 +159,32 @@ func (v *Validator) Handle(ctx context.Context, req admission.Request) admission
 	}
 
 	if dec.Allowed {
+		// Record allowed request metric
+		metrics.AllowedRequests.WithLabelValues(ns, string(kind), string(action)).Inc()
+
+		// Record exception override if applicable
+		if dec.MatchedOverride != nil {
+			policyType := ""
+			policyName := ""
+			if dec.MatchedPolicy != nil {
+				policyType = string(dec.MatchedPolicy.Kind)
+				policyName = dec.MatchedPolicy.Name
+			}
+			metrics.ExceptionOverrides.WithLabelValues(dec.MatchedOverride.Name, policyType, policyName).Inc()
+		}
+
 		return admission.Allowed("allowed by policy")
+	}
+
+	// Record denied request metric
+	if dec.MatchedPolicy != nil {
+		metrics.DeniedRequests.WithLabelValues(
+			string(dec.MatchedPolicy.Kind),
+			dec.MatchedPolicy.Name,
+			ns,
+			string(kind),
+			string(action),
+		).Inc()
 	}
 
 	msg := formatDenyMessage(dec)

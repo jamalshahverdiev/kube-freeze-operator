@@ -18,7 +18,10 @@ package v1alpha1
 
 import (
 	"context"
+	"fmt"
+	"time"
 
+	"github.com/robfig/cron/v3"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -56,7 +59,9 @@ type MaintenanceWindowCustomValidator struct {
 func (v *MaintenanceWindowCustomValidator) ValidateCreate(_ context.Context, obj *freezeoperatorv1alpha1.MaintenanceWindow) (admission.Warnings, error) {
 	maintenancewindowlog.Info("Validation for MaintenanceWindow upon creation", "name", obj.GetName())
 
-	// TODO(user): fill in your validation logic upon object creation.
+	if err := v.validateMaintenanceWindow(obj); err != nil {
+		return nil, err
+	}
 
 	return nil, nil
 }
@@ -65,7 +70,9 @@ func (v *MaintenanceWindowCustomValidator) ValidateCreate(_ context.Context, obj
 func (v *MaintenanceWindowCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj *freezeoperatorv1alpha1.MaintenanceWindow) (admission.Warnings, error) {
 	maintenancewindowlog.Info("Validation for MaintenanceWindow upon update", "name", newObj.GetName())
 
-	// TODO(user): fill in your validation logic upon object update.
+	if err := v.validateMaintenanceWindow(newObj); err != nil {
+		return nil, err
+	}
 
 	return nil, nil
 }
@@ -74,7 +81,35 @@ func (v *MaintenanceWindowCustomValidator) ValidateUpdate(_ context.Context, old
 func (v *MaintenanceWindowCustomValidator) ValidateDelete(_ context.Context, obj *freezeoperatorv1alpha1.MaintenanceWindow) (admission.Warnings, error) {
 	maintenancewindowlog.Info("Validation for MaintenanceWindow upon deletion", "name", obj.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
-
+	// No validation needed for deletion
 	return nil, nil
+}
+
+func (v *MaintenanceWindowCustomValidator) validateMaintenanceWindow(obj *freezeoperatorv1alpha1.MaintenanceWindow) error {
+	// Validate timezone
+	if obj.Spec.Timezone != "" {
+		if _, err := time.LoadLocation(obj.Spec.Timezone); err != nil {
+			return fmt.Errorf("spec.timezone: invalid timezone %q: %w", obj.Spec.Timezone, err)
+		}
+	}
+
+	// Validate windows
+	if len(obj.Spec.Windows) == 0 {
+		return fmt.Errorf("spec.windows: must have at least one window")
+	}
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	for i, w := range obj.Spec.Windows {
+		// Validate cron schedule
+		if _, err := parser.Parse(w.Schedule); err != nil {
+			return fmt.Errorf("spec.windows[%d].schedule: invalid cron expression %q: %w", i, w.Schedule, err)
+		}
+
+		// Validate duration
+		if w.Duration.Duration <= 0 {
+			return fmt.Errorf("spec.windows[%d].duration: must be greater than 0", i)
+		}
+	}
+
+	return nil
 }
