@@ -32,3 +32,7 @@ vendor/
 
 # Kubeconfig might contain secrets
 *.kubeconfig
+
+# Helm dependencies
+dist/chart/charts/
+dist/chart/Chart.lock
