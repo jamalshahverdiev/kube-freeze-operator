@@ -1,0 +1,92 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package v1alpha1
+
+import (
+	"context"
+	"fmt"
+
+	ctrl "sigs.k8s.io/controller-runtime"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	freezeoperatorv1alpha1 "github.com/jamalshahverdiev/kube-freeze-operator/api/v1alpha1"
+)
+
+// nolint:unused
+// log is for logging in this package.
+var freezeexceptionLog = logf.Log.WithName("freezeexception-resource")
+
+// SetupFreezeExceptionWebhookWithManager registers the webhook for FreezeException in the manager.
+func SetupFreezeExceptionWebhookWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewWebhookManagedBy(mgr, &freezeoperatorv1alpha1.FreezeException{}).
+		WithValidator(&FreezeExceptionCustomValidator{}).
+		Complete()
+}
+
+// +kubebuilder:webhook:path=/validate-freeze-operator-io-v1alpha1-freezeexception,mutating=false,failurePolicy=fail,sideEffects=None,groups=freeze-operator.io,resources=freezeexceptions,verbs=create;update,versions=v1alpha1,name=vfreezeexception-v1alpha1.kb.io,admissionReviewVersions=v1
+
+// FreezeExceptionCustomValidator struct is responsible for validating the FreezeException resource
+// when it is created, updated, or deleted.
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as this struct is used only for temporary operations and does not need to be deeply copied.
+type FreezeExceptionCustomValidator struct{}
+
+// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type FreezeException.
+func (v *FreezeExceptionCustomValidator) ValidateCreate(_ context.Context, obj *freezeoperatorv1alpha1.FreezeException) (admission.Warnings, error) {
+	freezeexceptionLog.Info("Validation for FreezeException upon creation", "name", obj.GetName())
+
+	if err := v.validateFreezeException(obj); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type FreezeException.
+func (v *FreezeExceptionCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj *freezeoperatorv1alpha1.FreezeException) (admission.Warnings, error) {
+	freezeexceptionLog.Info("Validation for FreezeException upon update", "name", newObj.GetName())
+
+	if err := v.validateFreezeException(newObj); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type FreezeException.
+func (v *FreezeExceptionCustomValidator) ValidateDelete(_ context.Context, obj *freezeoperatorv1alpha1.FreezeException) (admission.Warnings, error) {
+	freezeexceptionLog.Info("Validation for FreezeException upon deletion", "name", obj.GetName())
+
+	// No validation needed for deletion
+	return nil, nil
+}
+
+func (v *FreezeExceptionCustomValidator) validateFreezeException(obj *freezeoperatorv1alpha1.FreezeException) error {
+	// Validate activeTo > activeFrom
+	if !obj.Spec.ActiveFrom.Time.Before(obj.Spec.ActiveTo.Time) {
+		return fmt.Errorf("spec.activeTo must be after spec.activeFrom")
+	}
+
+	// Validate that at least one action is specified
+	if len(obj.Spec.Allow) == 0 {
+		return fmt.Errorf("spec.allow: must specify at least one action")
+	}
+
+	return nil
+}
