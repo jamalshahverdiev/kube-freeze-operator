@@ -40,10 +40,6 @@ func SetupMaintenanceWindowWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: If you want to customise the 'path', use the flags '--defaulting-path' or '--validation-path'.
 // +kubebuilder:webhook:path=/validate-freeze-operator-io-v1alpha1-maintenancewindow,mutating=false,failurePolicy=fail,sideEffects=None,groups=freeze-operator.io,resources=maintenancewindows,verbs=create;update,versions=v1alpha1,name=vmaintenancewindow-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // MaintenanceWindowCustomValidator struct is responsible for validating the MaintenanceWindow resource
@@ -51,9 +47,7 @@ func SetupMaintenanceWindowWebhookWithManager(mgr ctrl.Manager) error {
 //
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
-type MaintenanceWindowCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
-}
+type MaintenanceWindowCustomValidator struct{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type MaintenanceWindow.
 func (v *MaintenanceWindowCustomValidator) ValidateCreate(_ context.Context, obj *freezeoperatorv1alpha1.MaintenanceWindow) (admission.Warnings, error) {

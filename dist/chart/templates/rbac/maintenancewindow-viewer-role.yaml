@@ -1,0 +1,26 @@
+{{- if .Values.rbacHelpers.enable }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/name: {{ include "kube-freeze-operator.name" . }}
+        helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    name: {{ include "kube-freeze-operator.resourceName" (dict "suffix" "maintenancewindow-viewer-role" "context" $) }}
+rules:
+    - apiGroups:
+        - freeze-operator.io
+      resources:
+        - maintenancewindows
+      verbs:
+        - get
+        - list
+        - watch
+    - apiGroups:
+        - freeze-operator.io
+      resources:
+        - maintenancewindows/status
+      verbs:
+        - get
+{{- end }}

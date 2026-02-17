@@ -1,0 +1,23 @@
+apiVersion: v2
+name: kube-freeze-operator
+description: Kubernetes operator for enforcing change freezes and maintenance windows
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/jamalshahverdiev/kube-freeze-operator
+sources:
+  - https://github.com/jamalshahverdiev/kube-freeze-operator
+maintainers:
+  - name: Jamal Shahverdiev
+    url: https://github.com/jamalshahverdiev
+keywords:
+  - operator
+  - freeze
+  - maintenance
+  - change-management
+  - kubernetes
+dependencies:
+  - name: cert-manager
+    version: "~1.16.0"
+    repository: https://charts.jetstack.io
+    condition: certManager.enable
