@@ -1,6 +1,6 @@
 module github.com/jamalshahverdiev/kube-freeze-operator
 
-go 1.25.6
+go 1.25.7
 
 require (
 	github.com/onsi/ginkgo/v2 v2.27.2

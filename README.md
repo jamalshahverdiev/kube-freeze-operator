@@ -16,7 +16,7 @@ Scaffolded via Kubebuilder. Core reconciliation/enforcement logic is work-in-pro
 ## Getting Started
 
 ### Prerequisites
-- Go 1.25.6 (recommended)
+- Go 1.25.7 (recommended)
 - Docker (for building/pushing the manager image)
 - `kubectl`
 - Access to a Kubernetes cluster
