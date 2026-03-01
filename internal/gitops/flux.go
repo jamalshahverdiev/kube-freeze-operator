@@ -158,7 +158,7 @@ func reconcileFluxObject(
 		annotations = make(map[string]string)
 	}
 
-	managedByUs := annotations[AnnotationManaged] == "true" &&
+	managedByUs := annotations[AnnotationManaged] == annotationManagedValue &&
 		annotations[AnnotationManagedByPolicy] == policyRef
 
 	switch {
@@ -166,7 +166,7 @@ func reconcileFluxObject(
 		// Capture current suspend state.
 		suspended, _, _ := unstructured.NestedBool(obj.Object, "spec", "suspend")
 		annotations[AnnotationOriginalSuspend] = strconv.FormatBool(suspended)
-		annotations[AnnotationManaged] = "true"
+		annotations[AnnotationManaged] = annotationManagedValue
 		annotations[AnnotationManagedByPolicy] = policyRef
 		obj.SetAnnotations(annotations)
 

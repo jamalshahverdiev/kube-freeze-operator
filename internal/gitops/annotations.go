@@ -32,4 +32,7 @@ const (
 	// AnnotationOriginalSuspend stores the original Flux spec.suspend boolean value ("true"/"false")
 	// before the operator set it to true.
 	AnnotationOriginalSuspend = "freeze-operator.io/original-suspend"
+
+	// annotationManagedValue is the value written to AnnotationManaged.
+	annotationManagedValue = "true"
 )

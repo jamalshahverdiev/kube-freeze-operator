@@ -46,7 +46,6 @@ func reconcileArgoCD(
 	ctx context.Context,
 	c client.Client,
 	spec *freezev1alpha1.GitOpsArgoCDSpec,
-	nsSelector *metav1.LabelSelector,
 	policyRef string,
 	active bool,
 ) (int, error) {
@@ -127,7 +126,7 @@ func reconcileArgoCDApp(
 		annotations = make(map[string]string)
 	}
 
-	managedByUs := annotations[AnnotationManaged] == "true" &&
+	managedByUs := annotations[AnnotationManaged] == annotationManagedValue &&
 		annotations[AnnotationManagedByPolicy] == policyRef
 
 	switch {
@@ -146,7 +145,7 @@ func reconcileArgoCDApp(
 			// autosync was already nil — record that so we don't accidentally enable it on restore.
 			annotations[AnnotationOriginalAutoSync] = "null"
 		}
-		annotations[AnnotationManaged] = "true"
+		annotations[AnnotationManaged] = annotationManagedValue
 		annotations[AnnotationManagedByPolicy] = policyRef
 		app.SetAnnotations(annotations)
 

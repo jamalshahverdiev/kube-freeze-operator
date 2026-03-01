@@ -81,7 +81,7 @@ func (r *Reconciler) Reconcile(
 
 	// ArgoCD
 	if slices.Contains(gitops.Providers, freezev1alpha1.GitOpsProviderArgoCD) {
-		n, err := reconcileArgoCD(ctx, r.Client, gitops.ArgoCD, nil, policyRef, active)
+		n, err := reconcileArgoCD(ctx, r.Client, gitops.ArgoCD, policyRef, active)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("argocd: %w", err))
 		}

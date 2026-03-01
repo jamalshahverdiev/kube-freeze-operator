@@ -298,15 +298,15 @@ func mapGVKToTargetKind(group string, kind string) (freezev1alpha1.TargetKind, b
 func formatDenyMessage(dec policy.Decision, isGitOps bool) string {
 	if isGitOps {
 		// Short message for GitOps sync agents — avoids noise in ArgoCD/Flux UI.
-		policy := ""
+		policyName := ""
 		if dec.MatchedPolicy != nil {
-			policy = dec.MatchedPolicy.Name
+			policyName = dec.MatchedPolicy.Name
 		}
 		if dec.FreezeEndTime != nil {
 			return fmt.Sprintf("[freeze-operator] sync blocked by %s until %s",
-				policy, dec.FreezeEndTime.UTC().Format(time.RFC3339))
+				policyName, dec.FreezeEndTime.UTC().Format(time.RFC3339))
 		}
-		return fmt.Sprintf("[freeze-operator] sync blocked by %s", policy)
+		return fmt.Sprintf("[freeze-operator] sync blocked by %s", policyName)
 	}
 	parts := []string{}
 	if dec.MatchedPolicy != nil {
