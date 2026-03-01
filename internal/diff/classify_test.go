@@ -14,6 +14,8 @@ import (
 
 func ptr[T any](v T) *T { return &v }
 
+const imgV2 = "img:v2"
+
 // ---------------------------------------------------------------------------
 // Deployment
 // ---------------------------------------------------------------------------
@@ -32,7 +34,7 @@ func TestClassifyUpdate_Deployment_TemplateChange_IsRollout(t *testing.T) {
 		},
 	}
 	updated := base.DeepCopy()
-	updated.Spec.Template.Spec.Containers[0].Image = "img:v2"
+	updated.Spec.Template.Spec.Containers[0].Image = imgV2
 
 	action, err := ClassifyUpdate(freezev1alpha1.TargetKindDeployment, base, updated)
 	g.Expect(err).ToNot(HaveOccurred())
@@ -75,7 +77,7 @@ func TestClassifyUpdate_Deployment_BothTemplateAndReplicas_IsRollout(t *testing.
 	}
 	updated := base.DeepCopy()
 	updated.Spec.Replicas = ptr(int32(3))
-	updated.Spec.Template.Spec.Containers[0].Image = "img:v2"
+	updated.Spec.Template.Spec.Containers[0].Image = imgV2
 
 	// Template change wins → ROLL_OUT
 	action, err := ClassifyUpdate(freezev1alpha1.TargetKindDeployment, base, updated)
@@ -132,7 +134,7 @@ func TestClassifyUpdate_StatefulSet_TemplateChange_IsRollout(t *testing.T) {
 		},
 	}
 	updated := base.DeepCopy()
-	updated.Spec.Template.Spec.Containers[0].Image = "img:v2"
+	updated.Spec.Template.Spec.Containers[0].Image = imgV2
 
 	action, err := ClassifyUpdate(freezev1alpha1.TargetKindStatefulSet, base, updated)
 	g.Expect(err).ToNot(HaveOccurred())
@@ -177,7 +179,7 @@ func TestClassifyUpdate_DaemonSet_TemplateChange_IsRollout(t *testing.T) {
 		},
 	}
 	updated := base.DeepCopy()
-	updated.Spec.Template.Spec.Containers[0].Image = "img:v2"
+	updated.Spec.Template.Spec.Containers[0].Image = imgV2
 
 	action, err := ClassifyUpdate(freezev1alpha1.TargetKindDaemonSet, base, updated)
 	g.Expect(err).ToNot(HaveOccurred())

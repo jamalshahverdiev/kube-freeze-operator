@@ -43,10 +43,10 @@ func must(t *testing.T, err error) {
 func ptrInt32(v int32) *int32 { return &v }
 
 // makeDeployment returns a minimal Deployment ready for JSON serialization.
-func makeDeployment(ns, name string, lbls map[string]string, image string, replicas int32) *appsv1.Deployment {
+func makeDeployment(lbls map[string]string, image string, replicas int32) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"},
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: lbls},
+		ObjectMeta: metav1.ObjectMeta{Name: "my-dep", Namespace: "prod", Labels: lbls},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptrInt32(replicas),
 			Selector: &metav1.LabelSelector{MatchLabels: lbls},
@@ -58,7 +58,7 @@ func makeDeployment(ns, name string, lbls map[string]string, image string, repli
 	}
 }
 
-func mustJSON(t *testing.T, obj interface{}) []byte {
+func mustJSON(t *testing.T, obj any) []byte {
 	t.Helper()
 	b, err := json.Marshal(obj)
 	if err != nil {
@@ -85,7 +85,7 @@ func makeCreateRequest(t *testing.T, dep *appsv1.Deployment, username string, gr
 	}}
 }
 
-func makeUpdateRequest(t *testing.T, oldDep, newDep *appsv1.Deployment, username string, groups []string) admission.Request {
+func makeUpdateRequest(t *testing.T, oldDep, newDep *appsv1.Deployment, groups []string) admission.Request {
 	t.Helper()
 	return admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
 		UID:       "uid-update",
@@ -96,7 +96,7 @@ func makeUpdateRequest(t *testing.T, oldDep, newDep *appsv1.Deployment, username
 		Name:      newDep.Name,
 		OldObject: runtime.RawExtension{Raw: mustJSON(t, oldDep)},
 		Object:    runtime.RawExtension{Raw: mustJSON(t, newDep)},
-		UserInfo:  authv1.UserInfo{Username: username, Groups: groups},
+		UserInfo:  authv1.UserInfo{Username: "user@example.com", Groups: groups},
 	}}
 }
 
@@ -117,7 +117,7 @@ func makeDeleteRequest(t *testing.T, dep *appsv1.Deployment, username string, gr
 func makeScaleRequest(t *testing.T, ns, name string, username string) admission.Request {
 	t.Helper()
 	// Scale subresource — object is autoscaler Scale, not a Deployment
-	scaleObj := map[string]interface{}{
+	scaleObj := map[string]any{
 		"apiVersion": "autoscaling/v1",
 		"kind":       "Scale",
 		"metadata":   map[string]string{"name": name, "namespace": ns},
@@ -137,7 +137,7 @@ func makeScaleRequest(t *testing.T, ns, name string, username string) admission.
 }
 
 // activeChangeFreeze returns a ChangeFreeze that is active right now.
-func activeChangeFreeze(name, ns string, deny []freezev1alpha1.Action) *freezev1alpha1.ChangeFreeze {
+func activeChangeFreeze(name string, deny []freezev1alpha1.Action) *freezev1alpha1.ChangeFreeze {
 	now := time.Now().UTC()
 	return &freezev1alpha1.ChangeFreeze{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
@@ -145,7 +145,7 @@ func activeChangeFreeze(name, ns string, deny []freezev1alpha1.Action) *freezev1
 			StartTime: metav1.Time{Time: now.Add(-time.Hour)},
 			EndTime:   metav1.Time{Time: now.Add(time.Hour)},
 			Target: freezev1alpha1.TargetSpec{
-				NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"env": ns}},
+				NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}},
 				Kinds:             []freezev1alpha1.TargetKind{freezev1alpha1.TargetKindDeployment},
 			},
 			Rules:   freezev1alpha1.PolicyRulesSpec{Deny: deny},
@@ -211,7 +211,7 @@ func buildValidator(t *testing.T, objs ...runtime.Object) *Validator {
 func TestValidator_NoPolicies_AllowCreate(t *testing.T) {
 	g := NewWithT(t)
 	v := buildValidator(t, prodNamespace())
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeCreateRequest(t, dep, "user@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeTrue(), "expected allow without any freeze policies: %s", resp.Result.Message)
@@ -220,9 +220,9 @@ func TestValidator_NoPolicies_AllowCreate(t *testing.T) {
 // 2. Active ChangeFreeze that denies CREATE → request denied.
 func TestValidator_ChangeFreezeActive_DenyCreate(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-create", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
+	cf := activeChangeFreeze("cf-create", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
 	v := buildValidator(t, prodNamespace(), cf)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeCreateRequest(t, dep, "user@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeFalse(), "expected deny during active freeze")
@@ -232,9 +232,9 @@ func TestValidator_ChangeFreezeActive_DenyCreate(t *testing.T) {
 // 3. Active ChangeFreeze denies DELETE → delete request denied.
 func TestValidator_ChangeFreezeActive_DenyDelete(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-delete", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionDelete})
+	cf := activeChangeFreeze("cf-delete", []freezev1alpha1.Action{freezev1alpha1.ActionDelete})
 	v := buildValidator(t, prodNamespace(), cf)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeDeleteRequest(t, dep, "user@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeFalse())
@@ -244,13 +244,13 @@ func TestValidator_ChangeFreezeActive_DenyDelete(t *testing.T) {
 // 4. Active ChangeFreeze denies ROLL_OUT → update that changes image is denied.
 func TestValidator_ChangeFreezeActive_DenyRollout_UpdateImageDenied(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-rollout", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionRollout})
+	cf := activeChangeFreeze("cf-rollout", []freezev1alpha1.Action{freezev1alpha1.ActionRollout})
 	v := buildValidator(t, prodNamespace(), cf)
 
-	old := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 2)
-	newDep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v2", 2) // image changed → ROLL_OUT
+	old := makeDeployment(map[string]string{"app": "x"}, "img:v1", 2)
+	newDep := makeDeployment(map[string]string{"app": "x"}, "img:v2", 2) // image changed → ROLL_OUT
 
-	resp := v.Handle(context.Background(), makeUpdateRequest(t, old, newDep, "user@example.com", []string{"system:authenticated"}))
+	resp := v.Handle(context.Background(), makeUpdateRequest(t, old, newDep, []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeFalse(), "rollout must be denied during freeze")
 	g.Expect(resp.Result.Message).To(ContainSubstring("cf-rollout"))
 }
@@ -258,63 +258,63 @@ func TestValidator_ChangeFreezeActive_DenyRollout_UpdateImageDenied(t *testing.T
 // 5. Active ChangeFreeze denies only ROLL_OUT → scale-only update (replicas change) is allowed.
 func TestValidator_ChangeFreezeActive_DenyRollout_ScaleUpdateAllowed(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-rollout-only", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionRollout})
+	cf := activeChangeFreeze("cf-rollout-only", []freezev1alpha1.Action{freezev1alpha1.ActionRollout})
 	v := buildValidator(t, prodNamespace(), cf)
 
-	old := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
-	newDep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 5) // only replicas changed → SCALE
+	old := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
+	newDep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 5) // only replicas changed → SCALE
 
-	resp := v.Handle(context.Background(), makeUpdateRequest(t, old, newDep, "user@example.com", []string{"system:authenticated"}))
+	resp := v.Handle(context.Background(), makeUpdateRequest(t, old, newDep, []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeTrue(), "scale must be allowed when freeze only denies ROLL_OUT: %s", resp.Result.Message)
 }
 
 // 6. Active ChangeFreeze denies SCALE → scale-only update is denied.
 func TestValidator_ChangeFreezeActive_DenyScale_ScaleUpdateDenied(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-scale", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionScale})
+	cf := activeChangeFreeze("cf-scale", []freezev1alpha1.Action{freezev1alpha1.ActionScale})
 	v := buildValidator(t, prodNamespace(), cf)
 
-	old := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
-	newDep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 5)
+	old := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
+	newDep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 5)
 
-	resp := v.Handle(context.Background(), makeUpdateRequest(t, old, newDep, "user@example.com", []string{"system:authenticated"}))
+	resp := v.Handle(context.Background(), makeUpdateRequest(t, old, newDep, []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeFalse())
 }
 
 // 7. Active FreezeException overrides active ChangeFreeze → allowed.
 func TestValidator_FreezeException_OverridesChangeFreeze_Allowed(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-exc", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionRollout})
+	cf := activeChangeFreeze("cf-exc", []freezev1alpha1.Action{freezev1alpha1.ActionRollout})
 	ex := activeFreezeException("ex-hotfix", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionRollout})
 	v := buildValidator(t, prodNamespace(), cf, ex)
 
-	old := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
-	newDep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v2", 1)
+	old := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
+	newDep := makeDeployment(map[string]string{"app": "x"}, "img:v2", 1)
 
-	resp := v.Handle(context.Background(), makeUpdateRequest(t, old, newDep, "user@example.com", []string{"system:authenticated"}))
+	resp := v.Handle(context.Background(), makeUpdateRequest(t, old, newDep, []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeTrue(), "exception must override freeze: %s", resp.Result.Message)
 }
 
 // 8. Exception covers only SCALE — rollout is still denied.
 func TestValidator_FreezeException_OnlyAllowsScale_RolloutStillDenied(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-mixed", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionRollout, freezev1alpha1.ActionScale})
+	cf := activeChangeFreeze("cf-mixed", []freezev1alpha1.Action{freezev1alpha1.ActionRollout, freezev1alpha1.ActionScale})
 	ex := activeFreezeException("ex-scale-only", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionScale}) // only allows SCALE
 	v := buildValidator(t, prodNamespace(), cf, ex)
 
-	old := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
-	newDep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v2", 1) // image change → ROLL_OUT
+	old := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
+	newDep := makeDeployment(map[string]string{"app": "x"}, "img:v2", 1) // image change → ROLL_OUT
 
-	resp := v.Handle(context.Background(), makeUpdateRequest(t, old, newDep, "user@example.com", []string{"system:authenticated"}))
+	resp := v.Handle(context.Background(), makeUpdateRequest(t, old, newDep, []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeFalse(), "rollout must still be denied when exception only covers SCALE")
 }
 
 // 9. Operator service-account bypass → always allowed.
 func TestValidator_OperatorServiceAccount_Bypassed(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-bypass", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
+	cf := activeChangeFreeze("cf-bypass", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
 	v := buildValidator(t, prodNamespace(), cf)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	// Group that matches operator namespace SA group: system:serviceaccounts:<operatorNamespace>
 	req := makeCreateRequest(t, dep, "system:serviceaccount:kube-system:kube-freeze-operator-controller-manager",
@@ -326,7 +326,7 @@ func TestValidator_OperatorServiceAccount_Bypassed(t *testing.T) {
 // 10. Terminating namespace → always allowed (avoid deadlock).
 func TestValidator_TerminatingNamespace_Allowed(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-term", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionDelete})
+	cf := activeChangeFreeze("cf-term", []freezev1alpha1.Action{freezev1alpha1.ActionDelete})
 
 	now := metav1.Now()
 	terminatingNS := &corev1.Namespace{
@@ -338,7 +338,7 @@ func TestValidator_TerminatingNamespace_Allowed(t *testing.T) {
 		},
 	}
 	v := buildValidator(t, terminatingNS, cf)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeDeleteRequest(t, dep, "user@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeTrue(), "terminating namespace must allow all operations: %s", resp.Result.Message)
@@ -380,7 +380,7 @@ func TestValidator_ChangeFreezeNotYetStarted_Allowed(t *testing.T) {
 		},
 	}
 	v := buildValidator(t, prodNamespace(), cf)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeCreateRequest(t, dep, "user@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeTrue(), "freeze not started yet, must be allowed: %s", resp.Result.Message)
@@ -403,7 +403,7 @@ func TestValidator_ChangeFreezeAlreadyEnded_Allowed(t *testing.T) {
 		},
 	}
 	v := buildValidator(t, prodNamespace(), cf)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeCreateRequest(t, dep, "user@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeTrue(), "freeze already ended, must be allowed: %s", resp.Result.Message)
@@ -412,9 +412,9 @@ func TestValidator_ChangeFreezeAlreadyEnded_Allowed(t *testing.T) {
 // 14. Scale subresource — denied when SCALE is in deny list.
 func TestValidator_ScaleSubresource_DeniedWhenScaleInDenyList(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-sub-scale", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionScale})
+	cf := activeChangeFreeze("cf-sub-scale", []freezev1alpha1.Action{freezev1alpha1.ActionScale})
 
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 	v := buildValidator(t, prodNamespace(), cf, dep)
 
 	resp := v.Handle(context.Background(), makeScaleRequest(t, "prod", "my-dep", "user@example.com"))
@@ -424,9 +424,9 @@ func TestValidator_ScaleSubresource_DeniedWhenScaleInDenyList(t *testing.T) {
 // 15. Scale subresource — allowed when only ROLL_OUT is in deny list.
 func TestValidator_ScaleSubresource_AllowedWhenOnlyRolloutDenied(t *testing.T) {
 	g := NewWithT(t)
-	cf := activeChangeFreeze("cf-sub-rollout", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionRollout})
+	cf := activeChangeFreeze("cf-sub-rollout", []freezev1alpha1.Action{freezev1alpha1.ActionRollout})
 
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 	v := buildValidator(t, prodNamespace(), cf, dep)
 
 	resp := v.Handle(context.Background(), makeScaleRequest(t, "prod", "my-dep", "user@example.com"))
@@ -451,7 +451,7 @@ func TestValidator_ChangeFreezeWrongNamespace_Allowed(t *testing.T) {
 		},
 	}
 	v := buildValidator(t, prodNamespace(), cf)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeCreateRequest(t, dep, "user@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeTrue(), "freeze targets different namespace selector, must allow: %s", resp.Result.Message)
@@ -475,7 +475,7 @@ func TestValidator_DenyMessage_ContainsUsefulInfo(t *testing.T) {
 		},
 	}
 	v := buildValidator(t, prodNamespace(), cf)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeCreateRequest(t, dep, "user@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeFalse())
@@ -543,7 +543,7 @@ func TestValidator_StatefulSet_Denied(t *testing.T) {
 func TestValidator_FreezeException_UserConstraint_AllowedForMatchingUser(t *testing.T) {
 	g := NewWithT(t)
 	now := time.Now().UTC()
-	cf := activeChangeFreeze("cf-user", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
+	cf := activeChangeFreeze("cf-user", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
 	ex := &freezev1alpha1.FreezeException{
 		ObjectMeta: metav1.ObjectMeta{Name: "ex-user"},
 		Spec: freezev1alpha1.FreezeExceptionSpec{
@@ -561,7 +561,7 @@ func TestValidator_FreezeException_UserConstraint_AllowedForMatchingUser(t *test
 		},
 	}
 	v := buildValidator(t, prodNamespace(), cf, ex)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeCreateRequest(t, dep, "oncall@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeTrue(), "matching user must be allowed by exception: %s", resp.Result.Message)
@@ -571,7 +571,7 @@ func TestValidator_FreezeException_UserConstraint_AllowedForMatchingUser(t *test
 func TestValidator_FreezeException_UserConstraint_DeniedForOtherUser(t *testing.T) {
 	g := NewWithT(t)
 	now := time.Now().UTC()
-	cf := activeChangeFreeze("cf-user2", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
+	cf := activeChangeFreeze("cf-user2", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
 	ex := &freezev1alpha1.FreezeException{
 		ObjectMeta: metav1.ObjectMeta{Name: "ex-user2"},
 		Spec: freezev1alpha1.FreezeExceptionSpec{
@@ -589,7 +589,7 @@ func TestValidator_FreezeException_UserConstraint_DeniedForOtherUser(t *testing.
 		},
 	}
 	v := buildValidator(t, prodNamespace(), cf, ex)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeCreateRequest(t, dep, "random-dev@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeFalse(), "user not in exception.allowedUsers must be denied")
@@ -599,7 +599,7 @@ func TestValidator_FreezeException_UserConstraint_DeniedForOtherUser(t *testing.
 func TestValidator_FreezeException_RequireLabels_Matched_Allowed(t *testing.T) {
 	g := NewWithT(t)
 	now := time.Now().UTC()
-	cf := activeChangeFreeze("cf-labels", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
+	cf := activeChangeFreeze("cf-labels", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
 	ex := &freezev1alpha1.FreezeException{
 		ObjectMeta: metav1.ObjectMeta{Name: "ex-labels"},
 		Spec: freezev1alpha1.FreezeExceptionSpec{
@@ -617,7 +617,7 @@ func TestValidator_FreezeException_RequireLabels_Matched_Allowed(t *testing.T) {
 		},
 	}
 	v := buildValidator(t, prodNamespace(), cf, ex)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x", "hotfix": "true"}, "img:v1", 1)
+	dep := makeDeployment(map[string]string{"app": "x", "hotfix": "true"}, "img:v1", 1)
 
 	resp := v.Handle(context.Background(), makeCreateRequest(t, dep, "user@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeTrue(), "label matches, exception must allow: %s", resp.Result.Message)
@@ -627,7 +627,7 @@ func TestValidator_FreezeException_RequireLabels_Matched_Allowed(t *testing.T) {
 func TestValidator_FreezeException_RequireLabels_NotMatched_Denied(t *testing.T) {
 	g := NewWithT(t)
 	now := time.Now().UTC()
-	cf := activeChangeFreeze("cf-labels2", "prod", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
+	cf := activeChangeFreeze("cf-labels2", []freezev1alpha1.Action{freezev1alpha1.ActionCreate})
 	ex := &freezev1alpha1.FreezeException{
 		ObjectMeta: metav1.ObjectMeta{Name: "ex-labels2"},
 		Spec: freezev1alpha1.FreezeExceptionSpec{
@@ -645,7 +645,7 @@ func TestValidator_FreezeException_RequireLabels_NotMatched_Denied(t *testing.T)
 		},
 	}
 	v := buildValidator(t, prodNamespace(), cf, ex)
-	dep := makeDeployment("prod", "my-dep", map[string]string{"app": "x"}, "img:v1", 1) // no hotfix label
+	dep := makeDeployment(map[string]string{"app": "x"}, "img:v1", 1) // no hotfix label
 
 	resp := v.Handle(context.Background(), makeCreateRequest(t, dep, "user@example.com", []string{"system:authenticated"}))
 	g.Expect(resp.Allowed).To(BeFalse(), "missing required label, exception must not apply")
