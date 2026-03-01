@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	freezeoperatorv1alpha1 "github.com/jamalshahverdiev/kube-freeze-operator/api/v1alpha1"
+	"github.com/jamalshahverdiev/kube-freeze-operator/internal/gitops"
 	"github.com/jamalshahverdiev/kube-freeze-operator/internal/metrics"
 	"github.com/jamalshahverdiev/kube-freeze-operator/internal/policy"
 )
@@ -60,6 +61,10 @@ type MaintenanceWindowReconciler struct {
 // +kubebuilder:rbac:groups=freeze-operator.io,resources=maintenancewindows/finalizers,verbs=update
 // +kubebuilder:rbac:groups=batch,resources=cronjobs,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kustomize.toolkit.fluxcd.io,resources=kustomizations,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=helm.toolkit.fluxcd.io,resources=helmreleases,verbs=get;list;watch;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -159,6 +164,23 @@ func (r *MaintenanceWindowReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			r.Recorder.Event(mw, corev1.EventTypeNormal, reasonCronJobsUpdated,
 				fmt.Sprintf("CronJobs suspend status updated (active=%v)", result.Active))
 		}
+	}
+
+	// Reconcile GitOps engines if configured.
+	// For MaintenanceWindow (DenyOutsideWindows): freeze is active when outside the window (result.Active=false).
+	if mw.Spec.Behavior.GitOps != nil && mw.Spec.Behavior.GitOps.Enabled {
+		gitopsFreezeActive := !result.Active // outside window = freeze on
+		gr := &gitops.Reconciler{Client: r.Client}
+		gResult, err := gr.Reconcile(ctx, mw.Spec.Behavior.GitOps, mw.Name, gitopsFreezeActive)
+		if err != nil {
+			logger.Error(err, "failed to reconcile GitOps resources")
+			if r.Recorder != nil {
+				r.Recorder.Event(mw, corev1.EventTypeWarning, "GitOpsReconcileFailed", err.Error())
+			}
+		}
+		mw.Status.GitopsPausedCount = gResult.PausedCount
+		now := gResult.ReconcileTime
+		mw.Status.GitopsLastReconcileTime = &now
 	}
 
 	// Update status

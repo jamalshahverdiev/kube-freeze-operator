@@ -66,6 +66,11 @@ func (v *Validator) Handle(ctx context.Context, req admission.Request) admission
 		return admission.Allowed("operator serviceaccount bypass")
 	}
 
+	// Detect GitOps service accounts so we can surface a concise deny message.
+	// ArgoCD runs in "argocd" namespace; Flux in "flux-system".
+	isGitOps := slices.ContainsFunc(req.UserInfo.Groups, func(g string) bool {
+		return g == "system:serviceaccounts:argocd" || g == "system:serviceaccounts:flux-system"
+	})
 	var (
 		kind      freezev1alpha1.TargetKind
 		action    freezev1alpha1.Action
@@ -187,7 +192,7 @@ func (v *Validator) Handle(ctx context.Context, req admission.Request) admission
 		).Inc()
 	}
 
-	msg := formatDenyMessage(dec)
+	msg := formatDenyMessage(dec, isGitOps)
 	log.Info("denied", "namespace", ns, "kind", kind, "action", action, "user", req.UserInfo.Username, "policy", dec.MatchedPolicy, "reason", dec.Reason)
 	return admission.Denied(msg)
 }
@@ -290,7 +295,19 @@ func mapGVKToTargetKind(group string, kind string) (freezev1alpha1.TargetKind, b
 	}
 }
 
-func formatDenyMessage(dec policy.Decision) string {
+func formatDenyMessage(dec policy.Decision, isGitOps bool) string {
+	if isGitOps {
+		// Short message for GitOps sync agents — avoids noise in ArgoCD/Flux UI.
+		policy := ""
+		if dec.MatchedPolicy != nil {
+			policy = dec.MatchedPolicy.Name
+		}
+		if dec.FreezeEndTime != nil {
+			return fmt.Sprintf("[freeze-operator] sync blocked by %s until %s",
+				policy, dec.FreezeEndTime.UTC().Format(time.RFC3339))
+		}
+		return fmt.Sprintf("[freeze-operator] sync blocked by %s", policy)
+	}
 	parts := []string{}
 	if dec.MatchedPolicy != nil {
 		parts = append(parts, fmt.Sprintf("Denied by %s/%s", dec.MatchedPolicy.Kind, dec.MatchedPolicy.Name))

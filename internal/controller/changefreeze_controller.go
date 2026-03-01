@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	freezeoperatorv1alpha1 "github.com/jamalshahverdiev/kube-freeze-operator/api/v1alpha1"
+	"github.com/jamalshahverdiev/kube-freeze-operator/internal/gitops"
 	"github.com/jamalshahverdiev/kube-freeze-operator/internal/metrics"
 )
 
@@ -47,6 +48,10 @@ type ChangeFreezeReconciler struct {
 // +kubebuilder:rbac:groups=freeze-operator.io,resources=changefreezes/finalizers,verbs=update
 // +kubebuilder:rbac:groups=batch,resources=cronjobs,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kustomize.toolkit.fluxcd.io,resources=kustomizations,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=helm.toolkit.fluxcd.io,resources=helmreleases,verbs=get;list;watch;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -145,6 +150,21 @@ func (r *ChangeFreezeReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			r.Recorder.Event(cf, corev1.EventTypeNormal, reasonCronJobsUpdated,
 				fmt.Sprintf("CronJobs suspend status updated (suspend=%v)", active))
 		}
+	}
+
+	// Reconcile GitOps engines (pause/resume ArgoCD & Flux) if configured.
+	if cf.Spec.Behavior.GitOps != nil && cf.Spec.Behavior.GitOps.Enabled {
+		gr := &gitops.Reconciler{Client: r.Client}
+		gResult, err := gr.Reconcile(ctx, cf.Spec.Behavior.GitOps, cf.Name, active)
+		if err != nil {
+			logger.Error(err, "failed to reconcile GitOps resources")
+			if r.Recorder != nil {
+				r.Recorder.Event(cf, corev1.EventTypeWarning, "GitOpsReconcileFailed", err.Error())
+			}
+		}
+		cf.Status.GitopsPausedCount = gResult.PausedCount
+		now := gResult.ReconcileTime
+		cf.Status.GitopsLastReconcileTime = &now
 	}
 
 	// Update status

@@ -65,6 +65,15 @@ type ChangeFreezeStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
+	// gitopsPausedCount is the number of GitOps objects (Applications, Kustomizations, HelmReleases)
+	// currently paused/suspended by this policy.
+	// +optional
+	GitopsPausedCount int `json:"gitopsPausedCount,omitempty"`
+
+	// gitopsLastReconcileTime is the last time GitOps resources were reconciled.
+	// +optional
+	GitopsLastReconcileTime *metav1.Time `json:"gitopsLastReconcileTime,omitempty"`
+
 	// conditions represent the current state of the ChangeFreeze resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
 	//
