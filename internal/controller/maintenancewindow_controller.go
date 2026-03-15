@@ -84,6 +84,7 @@ func (r *MaintenanceWindowReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 		return ctrl.Result{}, err
 	}
+	mwPatch := client.MergeFrom(mw.DeepCopy())
 
 	// Evaluate current state
 	now := time.Now().UTC()
@@ -102,7 +103,7 @@ func (r *MaintenanceWindowReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			Message:            err.Error(),
 		})
 
-		if statusErr := r.Status().Update(ctx, mw); statusErr != nil {
+		if statusErr := r.Status().Patch(ctx, mw, mwPatch); statusErr != nil {
 			logger.Error(statusErr, "failed to update status after evaluation error")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, err
@@ -184,7 +185,7 @@ func (r *MaintenanceWindowReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Update status
-	if err := r.Status().Update(ctx, mw); err != nil {
+	if err := r.Status().Patch(ctx, mw, mwPatch); err != nil {
 		return ctrl.Result{}, err
 	}
 

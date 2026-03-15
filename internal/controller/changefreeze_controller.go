@@ -71,6 +71,7 @@ func (r *ChangeFreezeReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 		return ctrl.Result{}, err
 	}
+	cfPatch := client.MergeFrom(cf.DeepCopy())
 
 	// Evaluate current state
 	now := time.Now().UTC()
@@ -168,7 +169,7 @@ func (r *ChangeFreezeReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Update status
-	if err := r.Status().Update(ctx, cf); err != nil {
+	if err := r.Status().Patch(ctx, cf, cfPatch); err != nil {
 		return ctrl.Result{}, err
 	}
 
