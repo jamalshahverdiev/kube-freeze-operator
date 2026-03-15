@@ -87,11 +87,92 @@ type MessageSpec struct {
 	Contact string `json:"contact,omitempty"`
 }
 
+// GitOpsProvider names a supported GitOps engine.
+// +kubebuilder:validation:Enum=argocd;flux
+type GitOpsProvider string
+
+const (
+	GitOpsProviderArgoCD GitOpsProvider = "argocd"
+	GitOpsProviderFlux   GitOpsProvider = "flux"
+)
+
+// GitOpsPauseMode controls how the operator pauses ArgoCD Applications.
+// +kubebuilder:validation:Enum=DisableAutoSync
+type GitOpsPauseMode string
+
+const (
+	// GitOpsPauseModeDisableAutoSync removes spec.syncPolicy.automated to prevent automated syncs.
+	GitOpsPauseModeDisableAutoSync GitOpsPauseMode = "DisableAutoSync"
+)
+
+// GitOpsArgoCDSpec configures ArgoCD Application pause/resume behavior.
+type GitOpsArgoCDSpec struct {
+	// applicationSelector selects ArgoCD Application resources to manage.
+	// If nil, all Applications in matching namespaces are targeted.
+	// +optional
+	ApplicationSelector *metav1.LabelSelector `json:"applicationSelector,omitempty"`
+
+	// namespaceSelector selects namespaces where Applications are located.
+	// If nil, all namespaces are searched.
+	// +optional
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
+
+	// pauseMode controls how Applications are paused.
+	// Defaults to DisableAutoSync.
+	// +optional
+	// +kubebuilder:default=DisableAutoSync
+	PauseMode GitOpsPauseMode `json:"pauseMode,omitempty"`
+}
+
+// GitOpsFluxSpec configures Flux Kustomization/HelmRelease pause/resume behavior.
+type GitOpsFluxSpec struct {
+	// kustomizationSelector selects Flux Kustomization resources.
+	// If nil, all Kustomizations in matching namespaces are targeted.
+	// +optional
+	KustomizationSelector *metav1.LabelSelector `json:"kustomizationSelector,omitempty"`
+
+	// helmReleaseSelector selects Flux HelmRelease resources.
+	// If nil, all HelmReleases in matching namespaces are targeted.
+	// +optional
+	HelmReleaseSelector *metav1.LabelSelector `json:"helmReleaseSelector,omitempty"`
+
+	// namespaceSelector selects namespaces where Flux resources are located.
+	// If nil, all namespaces are searched.
+	// +optional
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
+}
+
+// GitOpsSpec configures GitOps engine pause/resume behavior during active freeze.
+type GitOpsSpec struct {
+	// enabled activates GitOps pause/resume integration.
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// providers lists which GitOps engines to manage.
+	// Valid values: "argocd", "flux".
+	// +optional
+	Providers []GitOpsProvider `json:"providers,omitempty"`
+
+	// argocd configures ArgoCD-specific pause behavior.
+	// +optional
+	ArgoCD *GitOpsArgoCDSpec `json:"argocd,omitempty"`
+
+	// flux configures Flux-specific suspend behavior.
+	// +optional
+	Flux *GitOpsFluxSpec `json:"flux,omitempty"`
+}
+
 // PolicyBehaviorSpec defines optional behavior side-effects.
 type PolicyBehaviorSpec struct {
 	// suspendCronJobs indicates whether the operator should suspend matching CronJobs while the policy is active.
 	// +optional
 	SuspendCronJobs bool `json:"suspendCronJobs,omitempty"`
+
+	// gitops configures GitOps engine pause/resume behavior during active freeze.
+	// When enabled, the operator will pause ArgoCD Applications and/or suspend Flux resources
+	// to prevent sync noise during the freeze window.
+	// +optional
+	GitOps *GitOpsSpec `json:"gitops,omitempty"`
 }
 
 // WindowStatus describes an evaluated maintenance window interval.
