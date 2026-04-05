@@ -65,7 +65,7 @@ kubectl delete crd freezeexceptions.freeze-operator.io
 |-----------|-------------|---------|
 | `manager.replicas` | Number of controller replicas | `1` |
 | `manager.image.repository` | Controller image repository | `jamalshahverdiev/kube-freeze-operator` |
-| `manager.image.tag` | Controller image tag | `v1.0.0` |
+| `manager.image.tag` | Controller image tag | `v3.0.1` |
 | `manager.image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `manager.args` | Additional controller arguments | `["--leader-elect"]` |
 | `manager.env` | Environment variables | `[]` |
@@ -77,6 +77,9 @@ kubectl delete crd freezeexceptions.freeze-operator.io
 | `manager.affinity` | Pod affinity rules | `{}` |
 | `manager.nodeSelector` | Node selector | `{}` |
 | `manager.tolerations` | Pod tolerations | `[]` |
+| `api.enable` | Enable CI Helper API | `true` |
+| `api.port` | API server port | `8082` |
+| `api.authMode` | API authentication mode (`none` or `token`) | `none` |
 | `rbacHelpers.enable` | Install admin/editor/viewer roles | `false` |
 | `crd.enable` | Install CRDs | `true` |
 | `crd.keep` | Keep CRDs on uninstall | `true` |
@@ -94,7 +97,7 @@ kubectl delete crd freezeexceptions.freeze-operator.io
 manager:
   replicas: 2
   image:
-    tag: v1.0.0
+    tag: v3.0.1
   resources:
     limits:
       cpu: 1000m
@@ -141,7 +144,7 @@ helm install kube-freeze-operator ./dist/chart \
 manager:
   replicas: 3
   image:
-    tag: v1.0.0
+    tag: v3.0.1
     pullPolicy: Always
   args:
     - --leader-elect
@@ -173,13 +176,15 @@ rbacHelpers:
 
 ## Upgrading
 
-### To 1.0.0 from pre-release versions
+### From v1.x/v2.x to v3.0.1
 
 ```bash
 helm upgrade kube-freeze-operator ./dist/chart \
   --namespace kube-freeze-operator-system \
-  --reuse-values
+  --set manager.image.tag=v3.0.1
 ```
+
+See [Upgrade Guides](../docs/) for detailed migration steps.
 
 ## Troubleshooting
 

@@ -2,8 +2,8 @@ apiVersion: v2
 name: kube-freeze-operator
 description: Kubernetes operator for enforcing change freezes and maintenance windows
 type: application
-version: 1.0.0
-appVersion: "1.0.0"
+version: 3.0.1
+appVersion: "3.0.1"
 home: https://github.com/jamalshahverdiev/kube-freeze-operator
 sources:
   - https://github.com/jamalshahverdiev/kube-freeze-operator
