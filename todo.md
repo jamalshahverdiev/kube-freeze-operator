@@ -354,8 +354,8 @@
 
 ## v2.0 — GitOps-friendly pause
 - [x] ArgoCD Application pause/unpause (optional)
-- [ ] Flux suspend/resume
-- [ ] Reduce "noise" in GitOps on deny
+- [x] Flux Kustomization/HelmRelease suspend/resume
+- [x] Reduce "noise" in GitOps on deny (short webhook messages for GitOps SAs)
 
 ## v3.0 — CI helper API
 - [ ] REST endpoint `can-i-deploy?ns=&kind=&name=...`

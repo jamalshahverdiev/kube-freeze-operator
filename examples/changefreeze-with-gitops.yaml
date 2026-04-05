@@ -1,0 +1,53 @@
+apiVersion: freeze-operator.io/v1alpha1
+kind: ChangeFreeze
+metadata:
+  name: year-end-freeze-gitops
+spec:
+  startTime: "2026-12-24T18:00:00Z"
+  endTime: "2027-01-02T09:00:00Z"
+  target:
+    namespaceSelector:
+      matchLabels:
+        env: production
+    kinds:
+      - Deployment
+      - StatefulSet
+  rules:
+    deny:
+      - CREATE
+      - DELETE
+      - ROLL_OUT
+      - SCALE
+  behavior:
+    suspendCronJobs: true
+    gitops:
+      enabled: true
+      providers:
+        - argocd
+        - flux
+      argocd:
+        # Target only Applications in the argocd namespace
+        namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: argocd
+        # Only Applications that deploy to production
+        applicationSelector:
+          matchLabels:
+            env: production
+        pauseMode: DisableAutoSync
+      flux:
+        # Target Kustomizations in flux-system
+        namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: flux-system
+        kustomizationSelector:
+          matchLabels:
+            env: production
+        # Target HelmReleases across all namespaces tagged production
+        helmReleaseSelector:
+          matchLabels:
+            env: production
+  message:
+    reason: "Year-end change freeze. GitOps sync paused automatically."
+    docsURL: "https://wiki.example.com/change-freeze"
+    contact: "oncall@example.com"

@@ -1,0 +1,42 @@
+apiVersion: freeze-operator.io/v1alpha1
+kind: MaintenanceWindow
+metadata:
+  name: weekly-maintenance-gitops
+spec:
+  timezone: "Europe/Baku"
+  mode: DenyOutsideWindows
+  windows:
+    - name: weekly-saturday
+      schedule: "0 22 * * 6"   # every Saturday at 22:00 Baku time
+      duration: 4h
+  target:
+    namespaceSelector:
+      matchLabels:
+        env: production
+    kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+  rules:
+    deny:
+      - CREATE
+      - DELETE
+      - ROLL_OUT
+  behavior:
+    gitops:
+      enabled: true
+      providers:
+        - argocd
+        - flux
+      argocd:
+        applicationSelector:
+          matchLabels:
+            env: production
+        pauseMode: DisableAutoSync
+      flux:
+        kustomizationSelector:
+          matchLabels:
+            env: production
+  message:
+    reason: "Deployments only allowed during Saturday maintenance window."
+    contact: "platform@example.com"
