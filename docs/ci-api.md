@@ -14,6 +14,7 @@ The API is enabled by default. Configure it with the `--api-bind-address` flag:
 # In manager deployment
 args:
   - --api-bind-address=:8082   # default
+  - --api-auth-mode=none       # "none" (default) or "token"
   # - --api-bind-address=0     # disable API
 ```
 
@@ -74,6 +75,78 @@ GET /v1/evaluate?namespace=prod&kind=Deployment&action=ROLL_OUT
 ### GET /healthz
 
 Health check endpoint. Returns `200 OK` with body `ok`.
+
+## Authentication
+
+By default the API has no authentication (`--api-auth-mode=none`). In production, enable **TokenReview** authentication so that only requests with valid Kubernetes ServiceAccount tokens are accepted.
+
+### Enabling Token Authentication
+
+```yaml
+# In manager deployment args
+args:
+  - --api-bind-address=:8082
+  - --api-auth-mode=token   # "none" (default) or "token"
+```
+
+With Helm:
+
+```yaml
+# values.yaml
+api:
+  enable: true
+  port: 8082
+  authMode: token   # enables TokenReview authentication
+```
+
+### How It Works
+
+1. Client sends `Authorization: Bearer <token>` header
+2. Operator calls Kubernetes `TokenReview` API to validate the token
+3. If token is valid — request proceeds to the evaluate handler
+4. If token is missing or invalid — `401 Unauthorized`
+
+The `/healthz` endpoint is **always** accessible without a token (for readiness probes).
+
+### Creating a ServiceAccount for CI
+
+```bash
+# Create a dedicated SA for CI pipelines
+kubectl create serviceaccount freeze-ci-client -n gitlab-runners
+
+# Get a short-lived token (10 min)
+TOKEN=$(kubectl create token freeze-ci-client -n gitlab-runners --duration=10m)
+
+# Use in requests
+curl -sf http://kube-freeze-api.kube-freeze-operator-system:8082/v1/evaluate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"namespace":"prod","kind":"Deployment","action":"ROLL_OUT"}'
+```
+
+For CI runners with mounted ServiceAccount tokens (e.g., pods in Kubernetes), use the auto-mounted token:
+
+```bash
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+curl -sf "$FREEZE_API_URL/v1/evaluate" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{\"namespace\":\"$FREEZE_NAMESPACE\",\"kind\":\"Deployment\",\"action\":\"ROLL_OUT\"}"
+```
+
+### Auth Modes Summary
+
+| Mode | Flag | Behavior |
+|------|------|----------|
+| `none` | `--api-auth-mode=none` | No authentication (default) |
+| `token` | `--api-auth-mode=token` | Validates Bearer token via Kubernetes TokenReview |
+
+### RBAC for TokenReview
+
+When `--api-auth-mode=token` is enabled, the operator needs permission to create `tokenreviews`. This is automatically configured:
+
+- Kustomize: `config/rbac/api_token_review_role.yaml`
+- Helm: `templates/rbac/api-token-review.yaml` (conditional on `api.authMode: token`)
 
 ## Accessing the API from CI/CD
 

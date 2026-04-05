@@ -8,6 +8,7 @@ Common issues and their solutions when working with kube-freeze-operator.
 - [Policy Not Working](#policy-not-working)
 - [CronJob Issues](#cronjob-issues)
 - [GitOps Integration Issues](#gitops-integration-issues)
+- [CI Helper API Issues](#ci-helper-api-issues)
 - [Performance Issues](#performance-issues)
 - [Debugging Tools](#debugging-tools)
 
@@ -360,6 +361,133 @@ argocd app set <app-name> --sync-policy none
 flux suspend kustomization <name>
 # After freeze ends:
 flux resume kustomization <name>
+```
+
+## CI Helper API Issues
+
+### Problem: API returns "connection refused"
+
+**Diagnosis:**
+
+1. Check the API is enabled:
+
+```bash
+kubectl get deployment -n kube-freeze-operator-system \
+  kube-freeze-operator-controller-manager \
+  -o jsonpath='{.spec.template.spec.containers[0].args}'
+```
+
+Look for `--api-bind-address=:8082`. If set to `0`, the API is disabled.
+
+2. Verify the pod is running and the API has started:
+
+```bash
+kubectl logs -n kube-freeze-operator-system \
+  deployment/kube-freeze-operator-controller-manager \
+  | grep "starting API server"
+# Expected: INFO api starting API server {"addr": ":8082"}
+```
+
+3. Check the API Service exists:
+
+```bash
+kubectl get svc -n kube-freeze-operator-system | grep api
+```
+
+### Problem: API returns 401 "missing Bearer token"
+
+**Cause:** Token authentication is enabled (`--api-auth-mode=token`) and request has no `Authorization` header.
+
+**Solution:**
+
+```bash
+# Get a ServiceAccount token
+TOKEN=$(kubectl create token <sa-name> -n <namespace> --duration=10m)
+
+# Include in request
+curl -sf http://<api-url>/v1/evaluate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"namespace":"prod","kind":"Deployment","action":"ROLL_OUT"}'
+```
+
+For CI runners with auto-mounted SA tokens:
+
+```bash
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+```
+
+### Problem: API returns 401 "token not authenticated"
+
+**Cause:** The Bearer token is invalid or expired.
+
+**Diagnosis:**
+
+1. Check token expiry — `kubectl create token` tokens have a minimum 10-minute duration
+2. Verify the ServiceAccount exists:
+
+```bash
+kubectl get sa <sa-name> -n <namespace>
+```
+
+3. Check operator logs for TokenReview errors:
+
+```bash
+kubectl logs -n kube-freeze-operator-system \
+  deployment/kube-freeze-operator-controller-manager \
+  | grep "TokenReview"
+```
+
+4. Verify the operator has RBAC for tokenreviews:
+
+```bash
+kubectl get clusterrole | grep freeze.*token
+kubectl get clusterrolebinding | grep freeze.*token
+```
+
+### Problem: API returns 500 "authentication error"
+
+**Cause:** Operator cannot reach the Kubernetes API for TokenReview.
+
+**Solutions:**
+
+1. Check the operator SA has `tokenreviews` permission:
+
+```bash
+kubectl auth can-i create tokenreviews \
+  --as=system:serviceaccount:kube-freeze-operator-system:kube-freeze-operator-controller-manager
+```
+
+2. Redeploy with RBAC:
+
+```bash
+make deploy IMG=<your-image>
+```
+
+### Problem: `/healthz` returns 401
+
+This should not happen — `/healthz` is exempt from authentication.
+
+**Diagnosis:**
+
+1. Verify you are connecting to port `8082` (API), not `8443` (metrics):
+
+```bash
+# API healthz (no auth needed)
+curl -sf http://localhost:8082/healthz
+
+# Metrics endpoint (requires auth — different port!)
+curl -sk https://localhost:8443/metrics
+```
+
+2. If port-forwarding, ensure you target the correct pod:
+
+```bash
+POD=$(kubectl get pods -n kube-freeze-operator-system \
+  -l control-plane=controller-manager \
+  --field-selector=status.phase=Running \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n kube-freeze-operator-system pod/$POD 8082:8082
 ```
 
 ## Performance Issues

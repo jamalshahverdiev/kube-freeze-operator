@@ -31,4 +31,7 @@ resources:
 - maintenancewindow_admin_role.yaml
 - maintenancewindow_editor_role.yaml
 - maintenancewindow_viewer_role.yaml
+# API TokenReview RBAC (needed when --api-auth-mode=token)
+- api_token_review_role.yaml
+- api_token_review_role_binding.yaml
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-kube-freeze-operator consists of three main components:
+kube-freeze-operator consists of the following main components:
 
 ```txt
 ┌─────────────────────────────────────────────────────┐
@@ -13,16 +13,20 @@ kube-freeze-operator consists of three main components:
 ┌─────────────────────────────────────────────────────┐
 │           kube-freeze-operator Manager              │
 │                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────┐ │
-│  │ Controllers  │  │   Webhooks   │  │  Metrics │ │
-│  └──────────────┘  └──────────────┘  └──────────┘ │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────┐   │
+│  │ Controllers  │  │   Webhooks   │  │  Metrics │   │
+│  └──────────────┘  └──────────────┘  └──────────┘   │
+│  ┌──────────────┐  ┌──────────────┐                 │
+│  │  CI Helper   │  │   GitOps     │                 │
+│  │  API (:8082) │  │ Pause/Resume │                 │
+│  └──────────────┘  └──────────────┘                 │
 └─────────────────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────┐
-│              Workload Resources                     │
-│  (Deployments, StatefulSets, DaemonSets, CronJobs) │
-└─────────────────────────────────────────────────────┘
+           │                    │
+           ▼                    ▼
+┌────────────────────┐  ┌────────────────────────────┐
+│  CI/CD Pipelines   │  │    Workload Resources      │
+│  (GitLab, GitHub)  │  │  (Deploy, STS, DS, CronJob)│
+└────────────────────┘  └────────────────────────────┘
 ```
 
 ## Components
@@ -159,6 +163,56 @@ Located in `internal/controller/cronjob_helper.go`
 
 **Conflict Prevention**: Skips CronJobs managed by different policy
 
+### 7. CI Helper API (v3.0+)
+
+Located in `internal/api/server.go`
+
+HTTP server running on port `:8082` (configurable) for CI/CD pipeline freeze checks.
+
+**Endpoints**:
+
+- `POST /v1/evaluate` — Evaluate freeze status (JSON body)
+- `GET /v1/evaluate` — Evaluate freeze status (query params)
+- `GET /healthz` — Health check (always unauthenticated)
+
+**Authentication** (v3.0.1+):
+
+Located in `internal/api/auth.go`
+
+- `--api-auth-mode=none` — No authentication (default)
+- `--api-auth-mode=token` — Bearer token validated via Kubernetes TokenReview API
+
+**Flow**:
+
+```txt
+1. HTTP request → Auth middleware (if token mode)
+              ↓
+2. Parse request (namespace, kind, action)
+              ↓
+3. Policy Evaluator (same as webhook)
+              ↓
+4. JSON response: { allow, reason, matchedPolicy, ... }
+```
+
+**Metrics**:
+
+- `freeze_operator_api_requests_total{decision,namespace,kind,action}`
+- `freeze_operator_api_latency_seconds` (histogram)
+- `freeze_operator_api_errors_total{error_type}`
+
+### 8. GitOps Integration (v2.0+)
+
+Located in `internal/gitops/`
+
+Automatically pauses and resumes GitOps reconciliation during freeze periods.
+
+**Supported Providers**:
+
+- **ArgoCD**: Disables auto-sync on `Application` resources
+- **Flux**: Suspends `Kustomization` and `HelmRelease` resources
+
+**Configuration** via `behavior.gitops` in ChangeFreeze/MaintenanceWindow specs.
+
 ## Data Flow
 
 ### Admission Request Flow
@@ -257,6 +311,8 @@ Located in `internal/controller/cronjob_helper.go`
 
 ### Metrics (Prometheus)
 
+**Controller metrics**:
+
 - `freeze_operator_active_policies_total`
 - `freeze_operator_denied_requests_total`
 - `freeze_operator_allowed_requests_total`
@@ -264,18 +320,31 @@ Located in `internal/controller/cronjob_helper.go`
 - `freeze_operator_reconciliation_duration_seconds`
 - `freeze_operator_cronjob_suspensions_total`
 
+**CI Helper API metrics** (v3.0+):
+
+- `freeze_operator_api_requests_total{decision,namespace,kind,action}`
+- `freeze_operator_api_latency_seconds`
+- `freeze_operator_api_errors_total{error_type}`
+
 ### Health Checks
 
-- `/healthz`: Liveness probe
-- `/readyz`: Readiness probe
-- `/metrics`: Prometheus metrics endpoint
+- `/healthz` (`:8081`): Liveness probe
+- `/readyz` (`:8081`): Readiness probe
+- `/metrics` (`:8443`): Prometheus metrics endpoint (TLS + authn/authz)
+- `/healthz` (`:8082`): CI Helper API health check
 
 ## Extension Points
 
+### Implemented
+
+1. **GitOps Integration** (v2.0): Pause ArgoCD/Flux applications during freeze
+2. **CI Helper API** (v3.0): HTTP API for CI/CD pipeline freeze checks
+3. **API Authentication** (v3.0.1): TokenReview-based Bearer token validation
+
 ### Future Enhancements
 
-1. **GitOps Integration** (v2.0): Pause ArgoCD/Flux applications
-2. **More Resources**: Jobs, Pods (via controllers)
-3. **Advanced Scheduling**: Exclude holidays, custom calendars
-4. **Notification**: Slack/email alerts
-5. **UI Dashboard**: Visual policy management
+1. **More Resources**: Jobs, Pods (via controllers)
+2. **Advanced Scheduling**: Exclude holidays, custom calendars
+3. **Notification**: Slack/email alerts on freeze/unfreeze
+4. **Multi-cluster**: Global freeze propagation
+5. **SubjectAccessReview**: Fine-grained API authorization

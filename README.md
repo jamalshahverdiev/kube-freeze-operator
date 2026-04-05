@@ -8,21 +8,21 @@ Kubernetes operator that enforces **change freeze** and **maintenance windows**.
 - **ChangeFreeze**: Block changes during fixed time periods (holidays, releases, etc.)
 - **FreezeException**: Override freezes for emergency hotfixes or planned exceptions
 - **CronJob Management**: Automatically suspend CronJobs during freezes (optional)
+- **GitOps Integration**: Automatic pause/resume for ArgoCD and Flux during freezes (v2.0+)
+- **CI Helper API**: HTTP endpoint for CI/CD pipelines to check freeze status before deploying (v3.0+)
+- **API Authentication**: TokenReview-based Bearer token validation for the CI Helper API (v3.0.1+)
 - **Flexible Targeting**: Use label selectors for namespaces and resources
-- **Action Control**: Granular control over UPDATE, ROLL_OUT, and SCALE operations
+- **Action Control**: Granular control over CREATE, DELETE, ROLL_OUT, and SCALE operations
 - **Prometheus Metrics**: Built-in observability with custom metrics
 
 ## Status
 
-**Version 1.0.0** - Production ready ✅
+**Version 3.0.1** - Production ready
 
-Core features:
-
-- ✅ CRDs: `MaintenanceWindow`, `ChangeFreeze`, `FreezeException` (`freeze-operator.io/v1alpha1`)
-- ✅ Validating Admission Webhook for Deployments/StatefulSets/DaemonSets/CronJobs
-- ✅ CronJob suspend/resume during freezes
-- ✅ Comprehensive documentation and Helm chart
-- ✅ Unit tests and CI/CD
+- v1.0: CRDs, Webhooks, CronJob management
+- v2.0: GitOps integration (ArgoCD, Flux pause/resume)
+- v3.0: CI Helper API (`POST/GET /v1/evaluate`)
+- v3.0.1: API authentication (TokenReview)
 
 See planning docs for future versions: [todo.md](todo.md) and [v2.0-v3.0-todo.md](v2.0-v3.0-todo.md).
 
@@ -50,43 +50,54 @@ helm install kube-freeze-operator ./dist/chart \
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.0/cert-manager.yaml
 
 # Install operator
-kubectl apply -f https://raw.githubusercontent.com/jamalshahverdiev/kube-freeze-operator/v1.0.0/dist/install.yaml
+kubectl apply -f https://raw.githubusercontent.com/jamalshahverdiev/kube-freeze-operator/v3.0.1/dist/install.yaml
 ```
 
 ### Quick Example
 
 ```yaml
-# Create a freeze for holiday season
+# Block all production deployments during holiday season
 apiVersion: freeze-operator.io/v1alpha1
 kind: ChangeFreeze
 metadata:
   name: holiday-freeze
-  namespace: default
 spec:
-  start: "2026-12-20T00:00:00Z"
-  end: "2026-12-27T00:00:00Z"
-  policyRules:
-    actions: [UPDATE]
-    resources: [Deployment, StatefulSet]
+  startTime: "2026-12-20T00:00:00Z"
+  endTime: "2026-12-27T00:00:00Z"
   target:
     namespaceSelector:
       matchLabels:
         env: prod
+    kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+      - CronJob
+  rules:
+    deny:
+      - CREATE
+      - ROLL_OUT
+      - DELETE
   message:
-    whenActive: |
-      Production is frozen for holidays.
-      Emergency changes require VP approval.
+    reason: "Holiday change freeze — emergency changes require VP approval"
+    contact: "#sre-oncall"
 ```
 
-Now try to update a deployment in a namespace with `env=prod` label - it will be denied! ❄️
+Now try to update a deployment in a namespace with `env=prod` label — it will be denied!
 
 ## Documentation
 
 - **[Usage Guide](docs/usage.md)** - Comprehensive examples and best practices
 - **[Architecture](docs/architecture.md)** - System design and components
 - **[API Reference](docs/api-reference.md)** - Complete CRD specification
+- **[CI Helper API](docs/ci-api.md)** - REST API for CI/CD freeze checks (with authentication)
+- **[GitOps: ArgoCD](docs/gitops-argocd.md)** - Automatic ArgoCD sync pause
+- **[GitOps: Flux](docs/gitops-flux.md)** - Automatic Flux reconciliation pause
 - **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
 - **[Helm Chart](dist/chart/README.md)** - Helm installation and configuration
+- **[Upgrade v1.0 → v2.0](docs/upgrade-v1.0-to-v2.0.md)** - Migration guide
+- **[Upgrade v2.0 → v3.0](docs/upgrade-v2.0-to-v3.0.md)** - Migration guide
+- **[Upgrade v3.0 → v3.0.1](docs/upgrade-v3.0-to-v3.0.1.md)** - API authentication
 
 ## Use Cases
 
@@ -192,7 +203,7 @@ There are end-to-end scripts under [hack](hack/) that redeploy the operator (opt
 
 Common environment variables:
 
-- `IMG` (default: `jamalshahverdiev/kube-freeze-operator:v1.0.4`) — operator image to deploy
+- `IMG` (default: `jamalshahverdiev/kube-freeze-operator:v3.0.1`) — operator image to deploy
 - `REDEPLOY` (default: `true`) — whether to run `make deploy` before validations
 - `PROD_NS` / `DEV_NS` — namespaces used by the script (names differ per script)
 
@@ -206,7 +217,7 @@ bash hack/validate_maintenancewindow.sh
 REDEPLOY=false bash hack/validate_maintenancewindow.sh
 
 # Validate a specific image tag
-IMG=jamalshahverdiev/kube-freeze-operator:v1.0.4 bash hack/validate_changefreeze.sh
+IMG=jamalshahverdiev/kube-freeze-operator:v3.0.1 bash hack/validate_changefreeze.sh
 ```
 
 ### Uninstall
