@@ -7,9 +7,12 @@
 #  3) GET /v1/evaluate without token → 401
 #  4) POST with invalid token → 401
 #  5) POST with valid SA token (allow) → 200
-#  6) POST with valid SA token (deny) → 200
+#  6) POST with valid SA token (deny) → 200 + policyKind
 #  7) GET with valid SA token → 200
-#  8) Cleanup
+#  8) Allow for non-denied action (SCALE) during freeze
+#  9) Bad request (invalid kind) → 400
+# 10) Bad request (missing fields) → 400
+# 11) Cleanup
 set -euo pipefail
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -25,12 +28,20 @@ SA_NAME="freeze-auth-test-sa"
 FREEZE_NAME="auth-integration-freeze"
 
 # ---------------------------------------------------------------------------
-# 0. Port-forward to API
+# 0. Port-forward to API (must hit leader pod — only leader runs the API)
 # ---------------------------------------------------------------------------
-info "Setting up port-forward on :${API_PORT}..."
-POD=$(kubectl get pods -n "$NS" -l control-plane=controller-manager \
-  --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
-kubectl port-forward -n "$NS" "pod/$POD" ${API_PORT}:${API_PORT} &>/dev/null &
+info "Finding leader pod (API only runs on leader)..."
+LEADER_ID=$(kubectl get lease -n "$NS" e66ee279.io \
+  -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || echo "")
+if [[ -z "$LEADER_ID" ]]; then
+  echo -e "${RED}ERROR: cannot find leader lease e66ee279.io in $NS${NC}"; exit 1
+fi
+# holderIdentity is "<pod-name>_<uuid>", extract pod name
+LEADER_POD="${LEADER_ID%%_*}"
+info "Leader pod: ${LEADER_POD}"
+
+info "Setting up port-forward on :${API_PORT} → ${LEADER_POD}..."
+kubectl port-forward -n "$NS" "pod/$LEADER_POD" ${API_PORT}:${API_PORT} &>/dev/null &
 PF_PID=$!
 sleep 3
 
@@ -153,6 +164,8 @@ POLICY=$(echo "$RESP" | jq -r '.matchedPolicy')
 ENDTIME=$(echo "$RESP" | jq -r '.freezeEndTime // empty')
 if [[ "$ALLOW" == "false" ]]; then ok "valid token → deny during freeze"; else fail "expected deny, got: $RESP"; fi
 if [[ "$POLICY" == "${FREEZE_NAME}" ]]; then ok "matchedPolicy=${FREEZE_NAME}"; else fail "matchedPolicy: $POLICY"; fi
+PKIND=$(echo "$RESP" | jq -r '.policyKind')
+if [[ "$PKIND" == "ChangeFreeze" ]]; then ok "policyKind=ChangeFreeze"; else fail "policyKind: $PKIND"; fi
 if [[ -n "$ENDTIME" ]]; then ok "freezeEndTime present"; else fail "freezeEndTime missing"; fi
 
 # ---------------------------------------------------------------------------
@@ -163,6 +176,37 @@ RESP=$(curl -sf "${API}/v1/evaluate?namespace=${TEST_NS}&kind=Deployment&action=
   -H "Authorization: Bearer $TOKEN" 2>&1) || RESP=""
 ALLOW=$(echo "$RESP" | jq -r '.allow')
 if [[ "$ALLOW" == "false" ]]; then ok "GET with token → deny"; else fail "GET expected deny, got: $RESP"; fi
+
+# ---------------------------------------------------------------------------
+# 9. Allow for non-denied action (SCALE) during freeze
+# ---------------------------------------------------------------------------
+info "Test 8: Allow SCALE (not in deny list) during freeze"
+RESP=$(curl -sf "${API}/v1/evaluate" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{\"namespace\":\"${TEST_NS}\",\"kind\":\"Deployment\",\"action\":\"SCALE\"}" 2>&1) || RESP=""
+ALLOW=$(echo "$RESP" | jq -r '.allow')
+if [[ "$ALLOW" == "true" ]]; then ok "SCALE allowed during freeze"; else fail "expected allow for SCALE, got: $RESP"; fi
+
+# ---------------------------------------------------------------------------
+# 10. Bad request — invalid kind → 400
+# ---------------------------------------------------------------------------
+info "Test 9: Bad request (invalid kind)"
+HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' "${API}/v1/evaluate" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"namespace":"default","kind":"Pod","action":"CREATE"}')
+if [[ "$HTTP_CODE" == "400" ]]; then ok "invalid kind → 400"; else fail "expected 400, got $HTTP_CODE"; fi
+
+# ---------------------------------------------------------------------------
+# 11. Bad request — missing fields → 400
+# ---------------------------------------------------------------------------
+info "Test 10: Bad request (missing fields)"
+HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' "${API}/v1/evaluate" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"namespace":"default"}')
+if [[ "$HTTP_CODE" == "400" ]]; then ok "missing fields → 400"; else fail "expected 400, got $HTTP_CODE"; fi
 
 # ---------------------------------------------------------------------------
 # Summary
