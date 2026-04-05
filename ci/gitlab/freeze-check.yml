@@ -1,0 +1,56 @@
+# GitLab CI template: Kube-Freeze-Operator freeze check
+#
+# Include in your .gitlab-ci.yml:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/<org>/kube-freeze-operator/<tag>/ci/gitlab/freeze-check.yml'
+#
+# Variables (set in GitLab UI or CI variables):
+#   FREEZE_API_URL   - API endpoint, e.g. http://kube-freeze-operator:8082 (required)
+#   FREEZE_NAMESPACE - target namespace, e.g. prod (required)
+#   FREEZE_KIND      - Kubernetes kind, default: Deployment
+#   FREEZE_ACTION    - action to check, default: ROLL_OUT
+#   FREEZE_FAIL_ON_ERROR - fail pipeline if API is unreachable, default: "false"
+
+.freeze-check:
+  image: alpine:3.21
+  variables:
+    FREEZE_KIND: Deployment
+    FREEZE_ACTION: ROLL_OUT
+    FREEZE_FAIL_ON_ERROR: "false"
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - |
+      echo "Checking freeze status for ${FREEZE_NAMESPACE}/${FREEZE_KIND}/${FREEZE_ACTION}..."
+
+      RESPONSE=$(curl -sf --max-time 10 \
+        -H "Content-Type: application/json" \
+        -d "{\"namespace\":\"${FREEZE_NAMESPACE}\",\"kind\":\"${FREEZE_KIND}\",\"action\":\"${FREEZE_ACTION}\"}" \
+        "${FREEZE_API_URL}/v1/evaluate" 2>&1) || {
+          echo "WARNING: freeze-check API unreachable: ${RESPONSE}"
+          if [ "${FREEZE_FAIL_ON_ERROR}" = "true" ]; then
+            exit 1
+          fi
+          echo "Continuing (FREEZE_FAIL_ON_ERROR=false)"
+          exit 0
+        }
+
+      ALLOW=$(echo "${RESPONSE}" | jq -r '.allow')
+      REASON=$(echo "${RESPONSE}" | jq -r '.reason // empty')
+      POLICY=$(echo "${RESPONSE}" | jq -r '.matchedPolicy // empty')
+      END_TIME=$(echo "${RESPONSE}" | jq -r '.freezeEndTime // empty')
+
+      echo "Response: allow=${ALLOW}"
+
+      if [ "${ALLOW}" = "false" ]; then
+        echo "============================================"
+        echo "DEPLOYMENT BLOCKED BY CHANGE FREEZE"
+        echo "  Policy:  ${POLICY}"
+        echo "  Reason:  ${REASON}"
+        [ -n "${END_TIME}" ] && echo "  Ends at: ${END_TIME}"
+        echo "============================================"
+        exit 1
+      fi
+
+      echo "No active freeze — deployment allowed."
