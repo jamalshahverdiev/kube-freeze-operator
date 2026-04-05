@@ -60,6 +60,33 @@ var (
 		},
 		[]string{"policy_type", "policy_name", "namespace"},
 	)
+
+	// APIRequests tracks CI helper API evaluate requests by decision
+	APIRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "freeze_operator_api_requests_total",
+			Help: "Total number of CI helper API evaluate requests by decision",
+		},
+		[]string{"decision", "namespace", "kind", "action"},
+	)
+
+	// APILatency tracks CI helper API evaluate request duration
+	APILatency = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "freeze_operator_api_latency_seconds",
+			Help:    "Duration of CI helper API evaluate requests in seconds",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0},
+		},
+	)
+
+	// APIErrors tracks CI helper API errors (invalid requests, internal errors)
+	APIErrors = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "freeze_operator_api_errors_total",
+			Help: "Total number of CI helper API errors by type",
+		},
+		[]string{"error_type"},
+	)
 )
 
 func init() {
@@ -71,5 +98,8 @@ func init() {
 		ExceptionOverrides,
 		ReconciliationDuration,
 		CronJobSuspensions,
+		APIRequests,
+		APILatency,
+		APIErrors,
 	)
 }

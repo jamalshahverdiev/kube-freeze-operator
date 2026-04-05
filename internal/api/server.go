@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	freezev1alpha1 "github.com/jamalshahverdiev/kube-freeze-operator/api/v1alpha1"
+	freezemetrics "github.com/jamalshahverdiev/kube-freeze-operator/internal/metrics"
 	"github.com/jamalshahverdiev/kube-freeze-operator/internal/policy"
 )
 
@@ -119,18 +120,21 @@ func (s *Server) handleEvaluate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) evaluate(w http.ResponseWriter, r *http.Request, req EvaluateRequest) {
 	if req.Namespace == "" || req.Kind == "" || req.Action == "" {
+		freezemetrics.APIErrors.WithLabelValues("bad_request").Inc()
 		writeError(w, http.StatusBadRequest, "namespace, kind, and action are required")
 		return
 	}
 
 	kind, ok := parseKind(req.Kind)
 	if !ok {
+		freezemetrics.APIErrors.WithLabelValues("bad_request").Inc()
 		writeError(w, http.StatusBadRequest, "unsupported kind: "+req.Kind+"; valid: Deployment, StatefulSet, DaemonSet, CronJob")
 		return
 	}
 
 	action, ok := parseAction(req.Action)
 	if !ok {
+		freezemetrics.APIErrors.WithLabelValues("bad_request").Inc()
 		writeError(w, http.StatusBadRequest, "unsupported action: "+req.Action+"; valid: CREATE, DELETE, ROLL_OUT, SCALE")
 		return
 	}
@@ -146,10 +150,20 @@ func (s *Server) evaluate(w http.ResponseWriter, r *http.Request, req EvaluateRe
 	eval := &policy.Evaluator{Client: s.client}
 	dec, err := eval.Evaluate(r.Context(), in)
 	if err != nil {
+		freezemetrics.APIErrors.WithLabelValues("internal").Inc()
 		log.Error(err, "policy evaluation failed", "namespace", req.Namespace, "kind", req.Kind, "action", req.Action)
 		writeError(w, http.StatusInternalServerError, "evaluation error: "+err.Error())
 		return
 	}
+
+	elapsed := time.Since(now).Seconds()
+	freezemetrics.APILatency.Observe(elapsed)
+
+	decision := "allow"
+	if !dec.Allowed {
+		decision = "deny"
+	}
+	freezemetrics.APIRequests.WithLabelValues(decision, req.Namespace, req.Kind, req.Action).Inc()
 
 	resp := EvaluateResponse{
 		Allow:       dec.Allowed,
