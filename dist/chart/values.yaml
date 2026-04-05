@@ -115,3 +115,6 @@ api:
   enable: true
   # API server port
   port: 8082
+  # Authentication mode: "none" (default) or "token" (Kubernetes TokenReview)
+  # When "token", requests must include a valid Bearer token (ServiceAccount token)
+  authMode: none

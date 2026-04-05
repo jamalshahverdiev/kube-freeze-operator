@@ -54,13 +54,30 @@ type EvaluateResponse struct {
 
 // Server serves the freeze-operator CI helper API.
 type Server struct {
-	client client.Reader
-	addr   string
+	client   client.Reader
+	addr     string
+	authMode AuthMode
+	auth     *TokenAuthMiddleware
 }
 
 // NewServer creates a new API server.
-func NewServer(c client.Reader, addr string) *Server {
-	return &Server{client: c, addr: addr}
+func NewServer(c client.Reader, addr string, opts ...ServerOption) *Server {
+	s := &Server{client: c, addr: addr, authMode: AuthModeNone}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
+}
+
+// ServerOption configures a Server.
+type ServerOption func(*Server)
+
+// WithTokenAuth enables TokenReview authentication.
+func WithTokenAuth(auth *TokenAuthMiddleware) ServerOption {
+	return func(s *Server) {
+		s.authMode = AuthModeToken
+		s.auth = auth
+	}
 }
 
 // Start runs the HTTP server. It blocks until ctx is cancelled.
@@ -73,9 +90,15 @@ func (s *Server) Start(ctx context.Context) error {
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	var handler http.Handler = mux
+	if s.authMode == AuthModeToken && s.auth != nil {
+		handler = s.auth.Wrap(mux)
+		log.Info("API server authentication enabled", "mode", s.authMode)
+	}
+
 	srv := &http.Server{
 		Addr:              s.addr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

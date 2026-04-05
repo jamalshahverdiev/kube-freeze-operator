@@ -27,6 +27,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -65,6 +66,7 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var apiAddr string
+	var apiAuthMode string
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
@@ -72,6 +74,7 @@ func main() {
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&apiAddr, "api-bind-address", ":8082", "The address the CI helper API binds to. Set to 0 to disable.")
+	flag.StringVar(&apiAuthMode, "api-auth-mode", "none", "API authentication mode: none or token (TokenReview).")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -245,7 +248,16 @@ func main() {
 	}
 
 	if apiAddr != "0" {
-		apiServer := api.NewServer(mgr.GetAPIReader(), apiAddr)
+		var serverOpts []api.ServerOption
+		if api.AuthMode(apiAuthMode) == api.AuthModeToken {
+			cs, err := kubernetes.NewForConfig(ctrl.GetConfigOrDie())
+			if err != nil {
+				setupLog.Error(err, "unable to create kubernetes clientset for API auth")
+				os.Exit(1)
+			}
+			serverOpts = append(serverOpts, api.WithTokenAuth(api.NewTokenAuthMiddleware(cs)))
+		}
+		apiServer := api.NewServer(mgr.GetAPIReader(), apiAddr, serverOpts...)
 		if err := mgr.Add(apiServer); err != nil {
 			setupLog.Error(err, "unable to add API server")
 			os.Exit(1)
