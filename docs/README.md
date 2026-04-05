@@ -9,6 +9,9 @@ Welcome to kube-freeze-operator documentation!
 - [API Reference](api-reference.md) - CRD specifications
 - [Troubleshooting](troubleshooting.md) - Common issues and solutions
 - [Security](security.md) - Security best practices
+- [CI Helper API](ci-api.md) - REST API for CI/CD pipeline freeze checks
+- [Upgrade v1.0 → v2.0](upgrade-v1.0-to-v2.0.md) - Migration guide
+- [Upgrade v2.0 → v3.0](upgrade-v2.0-to-v3.0.md) - Migration guide
 
 ## Quick Links
 

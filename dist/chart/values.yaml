@@ -108,3 +108,10 @@ webhook:
 prometheus:
   enable: false
 
+## CI Helper API server configuration
+## Exposes POST/GET /v1/evaluate endpoint for CI/CD pipeline freeze checks
+##
+api:
+  enable: true
+  # API server port
+  port: 8082
