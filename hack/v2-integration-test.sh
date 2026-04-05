@@ -68,6 +68,56 @@ spec:
 EOF
 
 # ---------------------------------------------------------------------------
+# 3b. Create Flux HelmRelease (with suspend=false)
+# ---------------------------------------------------------------------------
+info "Creating Flux HelmRelease..."
+cat <<EOF | kubectl apply -f -
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: test-helmrelease-gitops
+  namespace: flux-system
+  labels:
+    env: production
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart: nginx
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+  suspend: false
+EOF
+
+# ---------------------------------------------------------------------------
+# 3c. Create ArgoCD Application WITHOUT matching label (negative test)
+# ---------------------------------------------------------------------------
+info "Creating non-matching ArgoCD Application (staging)..."
+cat <<EOF | kubectl apply -f -
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: test-staging-app
+  namespace: argocd
+  labels:
+    env: staging
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps
+    targetRevision: HEAD
+    path: guestbook
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prod-gitops-test
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+EOF
+
+# ---------------------------------------------------------------------------
 # 4. Verify initial state
 # ---------------------------------------------------------------------------
 info "Verifying initial state (autoSync=enabled, suspend=false)..."
@@ -81,8 +131,14 @@ AUTOSYNC=$(kubectl get application test-app-gitops -n argocd \
 SUSPEND=$(kubectl get kustomization test-kustomization-gitops -n flux-system \
   -o jsonpath='{.spec.suspend}' 2>/dev/null || echo "false")
 [[ "$SUSPEND" == "false" || "$SUSPEND" == "" ]] \
-  && ok "Flux: suspend=false initially" \
+  && ok "Flux: Kustomization suspend=false initially" \
   || fail "Flux: expected suspend=false, got $SUSPEND"
+
+HR_SUSPEND=$(kubectl get helmrelease test-helmrelease-gitops -n flux-system \
+  -o jsonpath='{.spec.suspend}' 2>/dev/null || echo "false")
+[[ "$HR_SUSPEND" == "false" || "$HR_SUSPEND" == "" ]] \
+  && ok "Flux: HelmRelease suspend=false initially" \
+  || fail "Flux: HelmRelease expected suspend=false, got $HR_SUSPEND"
 
 # ---------------------------------------------------------------------------
 # 5. Apply ChangeFreeze with gitops.enabled (active NOW)
@@ -117,6 +173,9 @@ spec:
             env: production
       flux:
         kustomizationSelector:
+          matchLabels:
+            env: production
+        helmReleaseSelector:
           matchLabels:
             env: production
 EOF
@@ -175,8 +234,42 @@ SUSPEND_NOW=$(kubectl get kustomization test-kustomization-gitops -n flux-system
   || fail "Flux: managed annotation missing"
 
 [[ "$SUSPEND_NOW" == "true" ]] \
-  && ok "Flux: spec.suspend=true" \
-  || fail "Flux: expected suspend=true, got '$SUSPEND_NOW'"
+  && ok "Flux: Kustomization spec.suspend=true" \
+  || fail "Flux: Kustomization expected suspend=true, got '$SUSPEND_NOW'"
+
+# ---------------------------------------------------------------------------
+# 8b. Verify Flux HelmRelease was suspended
+# ---------------------------------------------------------------------------
+info "Checking Flux HelmRelease was suspended..."
+MANAGED_HR=$(kubectl get helmrelease test-helmrelease-gitops -n flux-system \
+  -o jsonpath='{.metadata.annotations.freeze-operator\.io/managed}' 2>/dev/null || echo "")
+HR_SUSPEND_NOW=$(kubectl get helmrelease test-helmrelease-gitops -n flux-system \
+  -o jsonpath='{.spec.suspend}' 2>/dev/null || echo "")
+
+[[ "$MANAGED_HR" == "true" ]] \
+  && ok "Flux: HelmRelease managed=true" \
+  || fail "Flux: HelmRelease managed annotation missing"
+
+[[ "$HR_SUSPEND_NOW" == "true" ]] \
+  && ok "Flux: HelmRelease spec.suspend=true" \
+  || fail "Flux: HelmRelease expected suspend=true, got '$HR_SUSPEND_NOW'"
+
+# ---------------------------------------------------------------------------
+# 8c. Verify non-matching ArgoCD Application was NOT touched
+# ---------------------------------------------------------------------------
+info "Verifying staging ArgoCD Application was NOT paused..."
+STAGING_MANAGED=$(kubectl get application test-staging-app -n argocd \
+  -o jsonpath='{.metadata.annotations.freeze-operator\.io/managed}' 2>/dev/null || echo "")
+STAGING_AUTOSYNC=$(kubectl get application test-staging-app -n argocd \
+  -o jsonpath='{.spec.syncPolicy.automated}' 2>/dev/null || echo "")
+
+[[ -z "$STAGING_MANAGED" ]] \
+  && ok "Negative: staging app NOT managed (selector filtering works)" \
+  || fail "Negative: staging app was managed (selector filtering broken): $STAGING_MANAGED"
+
+[[ -n "$STAGING_AUTOSYNC" ]] \
+  && ok "Negative: staging app autoSync still enabled" \
+  || fail "Negative: staging app autoSync was removed unexpectedly"
 
 # ---------------------------------------------------------------------------
 # 9. Check ChangeFreeze status
@@ -235,6 +328,21 @@ echo "  Deny message: $DENY_MSG"
   || info "Webhook: could not verify (impersonation may require extra RBAC)"
 
 # ---------------------------------------------------------------------------
+# 10b. Test webhook deny message for Flux SA
+# ---------------------------------------------------------------------------
+info "Testing webhook deny message for Flux service account (ROLL_OUT attempt)..."
+DENY_MSG_FLUX=$(kubectl set image deployment/test-deploy-webhook c=nginx:1.27 \
+  -n prod-gitops-test \
+  --as=system:serviceaccount:flux-system:kustomize-controller \
+  --as-group=system:serviceaccounts:flux-system \
+  2>&1 || true)
+
+echo "  Deny message: $DENY_MSG_FLUX"
+[[ "$DENY_MSG_FLUX" == *"freeze-operator"* || "$DENY_MSG_FLUX" == *"blocked"* || "$DENY_MSG_FLUX" == *"denied"* ]] \
+  && ok "Webhook: ROLL_OUT blocked for Flux SA with short message" \
+  || info "Webhook: could not verify Flux SA (impersonation may require extra RBAC)"
+
+# ---------------------------------------------------------------------------
 # 11. Terminate freeze early and verify restore
 # ---------------------------------------------------------------------------
 info "Patching ChangeFreeze to expired (testing restore)..."
@@ -270,8 +378,24 @@ info "Verifying Flux Kustomization restored..."
 SUSPEND_AFTER=$(kubectl get kustomization test-kustomization-gitops -n flux-system \
   -o jsonpath='{.spec.suspend}' 2>/dev/null || echo "true")
 [[ "$SUSPEND_AFTER" == "false" || "$SUSPEND_AFTER" == "" ]] \
-  && ok "Flux: spec.suspend restored to false" \
-  || fail "Flux: suspend still true after freeze ended"
+  && ok "Flux: Kustomization spec.suspend restored to false" \
+  || fail "Flux: Kustomization suspend still true after freeze ended"
+
+# ---------------------------------------------------------------------------
+# 13b. Verify Flux HelmRelease restored
+# ---------------------------------------------------------------------------
+info "Verifying Flux HelmRelease restored..."
+HR_SUSPEND_AFTER=$(kubectl get helmrelease test-helmrelease-gitops -n flux-system \
+  -o jsonpath='{.spec.suspend}' 2>/dev/null || echo "true")
+[[ "$HR_SUSPEND_AFTER" == "false" || "$HR_SUSPEND_AFTER" == "" ]] \
+  && ok "Flux: HelmRelease spec.suspend restored to false" \
+  || fail "Flux: HelmRelease suspend still true after freeze ended"
+
+MANAGED_HR_AFTER=$(kubectl get helmrelease test-helmrelease-gitops -n flux-system \
+  -o jsonpath='{.metadata.annotations.freeze-operator\.io/managed}' 2>/dev/null || echo "")
+[[ -z "$MANAGED_HR_AFTER" ]] \
+  && ok "Flux: HelmRelease managed annotation removed" \
+  || fail "Flux: HelmRelease managed annotation still present: $MANAGED_HR_AFTER"
 
 # ---------------------------------------------------------------------------
 # Cleanup
@@ -280,6 +404,8 @@ info "Cleaning up test resources..."
 kubectl delete changefreeze test-freeze-gitops --ignore-not-found
 kubectl delete application test-app-gitops -n argocd --ignore-not-found
 kubectl delete kustomization test-kustomization-gitops -n flux-system --ignore-not-found
+kubectl delete helmrelease test-helmrelease-gitops -n flux-system --ignore-not-found 2>/dev/null || true
+kubectl delete application test-staging-app -n argocd --ignore-not-found
 kubectl delete deployment test-deploy-webhook -n prod-gitops-test --ignore-not-found 2>/dev/null || true
 kubectl delete namespace prod-gitops-test --ignore-not-found
 
