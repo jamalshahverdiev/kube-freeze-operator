@@ -8,21 +8,21 @@ Kubernetes operator that enforces **change freeze** and **maintenance windows**.
 - **ChangeFreeze**: Block changes during fixed time periods (holidays, releases, etc.)
 - **FreezeException**: Override freezes for emergency hotfixes or planned exceptions
 - **CronJob Management**: Automatically suspend CronJobs during freezes (optional)
+- **GitOps Integration**: Automatic pause/resume for ArgoCD and Flux during freezes (v2.0+)
+- **CI Helper API**: HTTP endpoint for CI/CD pipelines to check freeze status before deploying (v3.0+)
+- **API Authentication**: TokenReview-based Bearer token validation for the CI Helper API (v3.0.1+)
 - **Flexible Targeting**: Use label selectors for namespaces and resources
-- **Action Control**: Granular control over UPDATE, ROLL_OUT, and SCALE operations
+- **Action Control**: Granular control over CREATE, DELETE, ROLL_OUT, and SCALE operations
 - **Prometheus Metrics**: Built-in observability with custom metrics
 
 ## Status
 
-**Version 1.0.0** - Production ready ✅
+**Version 3.0.1** - Production ready
 
-Core features:
-
-- ✅ CRDs: `MaintenanceWindow`, `ChangeFreeze`, `FreezeException` (`freeze-operator.io/v1alpha1`)
-- ✅ Validating Admission Webhook for Deployments/StatefulSets/DaemonSets/CronJobs
-- ✅ CronJob suspend/resume during freezes
-- ✅ Comprehensive documentation and Helm chart
-- ✅ Unit tests and CI/CD
+- v1.0: CRDs, Webhooks, CronJob management
+- v2.0: GitOps integration (ArgoCD, Flux pause/resume)
+- v3.0: CI Helper API (`POST/GET /v1/evaluate`)
+- v3.0.1: API authentication (TokenReview)
 
 See planning docs for future versions: [todo.md](todo.md) and [v2.0-v3.0-todo.md](v2.0-v3.0-todo.md).
 
@@ -85,8 +85,14 @@ Now try to update a deployment in a namespace with `env=prod` label - it will be
 - **[Usage Guide](docs/usage.md)** - Comprehensive examples and best practices
 - **[Architecture](docs/architecture.md)** - System design and components
 - **[API Reference](docs/api-reference.md)** - Complete CRD specification
+- **[CI Helper API](docs/ci-api.md)** - REST API for CI/CD freeze checks (with authentication)
+- **[GitOps: ArgoCD](docs/gitops-argocd.md)** - Automatic ArgoCD sync pause
+- **[GitOps: Flux](docs/gitops-flux.md)** - Automatic Flux reconciliation pause
 - **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
 - **[Helm Chart](dist/chart/README.md)** - Helm installation and configuration
+- **[Upgrade v1.0 → v2.0](docs/upgrade-v1.0-to-v2.0.md)** - Migration guide
+- **[Upgrade v2.0 → v3.0](docs/upgrade-v2.0-to-v3.0.md)** - Migration guide
+- **[Upgrade v3.0 → v3.0.1](docs/upgrade-v3.0-to-v3.0.1.md)** - API authentication
 
 ## Use Cases
 

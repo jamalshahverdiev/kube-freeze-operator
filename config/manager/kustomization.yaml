@@ -6,4 +6,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: jamalshahverdiev/kube-freeze-operator
-  newTag: v3.0.0-rc1
+  newTag: v3.0.1-rc1

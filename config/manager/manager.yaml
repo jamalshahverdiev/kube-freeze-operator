@@ -64,6 +64,7 @@ spec:
           - --leader-elect
           - --health-probe-bind-address=:8081
           - --api-bind-address=:8082
+          - --api-auth-mode=none
         image: controller:latest
         name: manager
         ports:

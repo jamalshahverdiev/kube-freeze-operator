@@ -499,21 +499,34 @@ kubectl get events --field-selector source=kube-freeze-operator-controller-manag
 
 ## Metrics
 
-The operator exposes Prometheus metrics:
+The operator exposes Prometheus metrics on `:8443` (TLS + authn/authz).
+
+### Controller Metrics
 
 | Metric | Type | Description |
 |--------|------|-------------|
 | `freeze_operator_active_policies_total` | Gauge | Number of currently active policies by type |
 | `freeze_operator_denied_requests_total` | Counter | Total admission requests denied |
 | `freeze_operator_allowed_requests_total` | Counter | Total admission requests allowed |
+| `freeze_operator_exception_overrides_total` | Counter | Total exception overrides applied |
 | `freeze_operator_reconciliation_duration_seconds` | Histogram | Time spent in reconciliation loops |
+| `freeze_operator_cronjob_suspensions_total` | Counter | Total CronJob suspend/resume operations |
 
 **Labels:**
 
 - `policy_type`: `MaintenanceWindow`, `ChangeFreeze`, `FreezeException`
+- `policy_name`: Policy resource name
 - `namespace`: Target namespace
 - `resource_type`: `Deployment`, `StatefulSet`, etc.
-- `action`: `UPDATE`, `ROLL_OUT`, `SCALE`
+- `action`: `CREATE`, `DELETE`, `ROLL_OUT`, `SCALE`
+
+### CI Helper API Metrics (v3.0+)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `freeze_operator_api_requests_total` | Counter | `decision`, `namespace`, `kind`, `action` | Total API evaluate requests |
+| `freeze_operator_api_latency_seconds` | Histogram | — | Duration of evaluate requests |
+| `freeze_operator_api_errors_total` | Counter | `error_type` | Total API errors (bad_request, etc.) |
 
 **Example PromQL queries:**
 
@@ -526,6 +539,15 @@ freeze_operator_active_policies_total{policy_type="ChangeFreeze"}
 
 # P99 reconciliation latency
 histogram_quantile(0.99, freeze_operator_reconciliation_duration_seconds_bucket)
+
+# API request rate by decision
+rate(freeze_operator_api_requests_total[5m])
+
+# API P95 latency
+histogram_quantile(0.95, freeze_operator_api_latency_seconds_bucket)
+
+# API error rate
+rate(freeze_operator_api_errors_total[5m])
 ```
 
 ---
@@ -592,14 +614,9 @@ verbs: ["create", "patch"]
 
 ## Upgrade Path
 
-### From Future Versions
-
-Version 2.0 (planned):
-
-- API group remains `freeze-operator.io`
-- New API version: `v1beta1` or `v1`
-- `v1alpha1` will be supported with conversion webhooks
-- No manual migration required
+- [v1.0 → v2.0](upgrade-v1.0-to-v2.0.md) — GitOps integration
+- [v2.0 → v3.0](upgrade-v2.0-to-v3.0.md) — CI Helper API
+- [v3.0 → v3.0.1](upgrade-v3.0-to-v3.0.1.md) — API authentication
 
 ---
 
@@ -607,4 +624,5 @@ Version 2.0 (planned):
 
 - [Usage Guide](usage.md) - Practical examples
 - [Architecture](architecture.md) - System design
+- [CI Helper API](ci-api.md) - REST API reference and authentication
 - [Troubleshooting](troubleshooting.md) - Common issues

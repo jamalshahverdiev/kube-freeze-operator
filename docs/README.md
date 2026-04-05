@@ -10,8 +10,11 @@ Welcome to kube-freeze-operator documentation!
 - [Troubleshooting](troubleshooting.md) - Common issues and solutions
 - [Security](security.md) - Security best practices
 - [CI Helper API](ci-api.md) - REST API for CI/CD pipeline freeze checks
+- [GitOps: ArgoCD](gitops-argocd.md) - Automatic ArgoCD sync pause during freeze
+- [GitOps: Flux](gitops-flux.md) - Automatic Flux reconciliation pause during freeze
 - [Upgrade v1.0 → v2.0](upgrade-v1.0-to-v2.0.md) - Migration guide
 - [Upgrade v2.0 → v3.0](upgrade-v2.0-to-v3.0.md) - Migration guide
+- [Upgrade v3.0 → v3.0.1](upgrade-v3.0-to-v3.0.1.md) - API authentication
 
 ## Quick Links
 
