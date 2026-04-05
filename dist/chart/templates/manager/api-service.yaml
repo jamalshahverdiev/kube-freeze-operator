@@ -1,0 +1,21 @@
+{{- if .Values.api.enable }}
+apiVersion: v1
+kind: Service
+metadata:
+    labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/name: {{ include "kube-freeze-operator.name" . }}
+        helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    name: {{ include "kube-freeze-operator.resourceName" (dict "suffix" "api" "context" $) }}
+    namespace: {{ .Release.Namespace }}
+spec:
+    selector:
+        app.kubernetes.io/name: {{ include "kube-freeze-operator.name" . }}
+        control-plane: controller-manager
+    ports:
+        - port: {{ .Values.api.port }}
+          targetPort: api
+          name: api
+          protocol: TCP
+{{- end }}

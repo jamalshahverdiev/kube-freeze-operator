@@ -44,6 +44,11 @@ spec:
                     - --metrics-bind-address=0
                     {{- end }}
                     - --health-probe-bind-address=:8081
+                    {{- if .Values.api.enable }}
+                    - --api-bind-address=:{{ .Values.api.port }}
+                    {{- else }}
+                    - --api-bind-address=0
+                    {{- end }}
                     {{- range .Values.manager.args }}
                     - {{ . }}
                     {{- end }}
@@ -65,6 +70,11 @@ spec:
                     - containerPort: {{ .Values.webhook.port }}
                       name: webhook-server
                       protocol: TCP
+                    {{- if .Values.api.enable }}
+                    - containerPort: {{ .Values.api.port }}
+                      name: api
+                      protocol: TCP
+                    {{- end }}
                   readinessProbe:
                     httpGet:
                         path: /readyz
